@@ -17,7 +17,7 @@ services:
       - MONGO_INITDB_ROOT_PASSWORD=${MONGO_ROOT_PASSWORD:-admin123}
       - MONGO_INITDB_DATABASE=${MONGO_DATABASE:-flight_analytics}
     networks:
-      - curated-network
+      - pipeline-network
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 10s
@@ -41,7 +41,7 @@ services:
       - ME_CONFIG_BASICAUTH_USERNAME=${MONGO_EXPRESS_USERNAME:-admin}
       - ME_CONFIG_BASICAUTH_PASSWORD=${MONGO_EXPRESS_PASSWORD:-admin123}
     networks:
-      - curated-network
+      - pipeline-network
     depends_on:
       mongodb:
         condition: service_healthy
@@ -54,4 +54,5 @@ volumes:
 
 networks:
   curated-network:
-    driver: bridge
+    name: pipeline-network
+    external: true
