@@ -1,0 +1,58 @@
+services:
+  spark-master:
+    image: apache/spark:3.5.0
+    container_name: spark-master
+    hostname: spark-master
+    ports:
+      - "8080:8080"   # Spark Master Web UI
+      - "7077:7077"   # Spark Master RPC
+    command: ["/opt/spark/sbin/start-master.sh"]
+    environment:
+      - SPARK_NO_DAEMONIZE=true
+    volumes:
+      - spark-master-data:/opt/spark/data
+      - ./src:/opt/spark/work-dir/src:ro
+    networks:
+      - pipeline-network
+
+  spark-worker1:
+    image: apache/spark:3.5.0
+    container_name: spark-worker1
+    hostname: spark-worker1
+    ports:
+      - "8081:8081"   # Spark Worker Web UI
+    command: ["/opt/spark/sbin/start-worker.sh", "spark://spark-master:7077"]
+    environment:
+      - SPARK_NO_DAEMONIZE=true
+    volumes:
+      - spark-worker1-data:/opt/spark/data
+    networks:
+      - pipeline-network
+    depends_on:
+      - spark-master
+
+  spark-worker2:
+    image: apache/spark:3.5.0
+    container_name: spark-worker2
+    hostname: spark-worker2
+    ports:
+      - "8082:8081"   # Spark Worker Web UI
+    command: ["/opt/spark/sbin/start-worker.sh", "spark://spark-master:7077"]
+    environment:
+      - SPARK_NO_DAEMONIZE=true
+    volumes:
+      - spark-worker2-data:/opt/spark/data
+    networks:
+      - pipeline-network
+    depends_on:
+      - spark-master
+
+volumes:
+  spark-master-data:
+  spark-worker1-data:
+  spark-worker2-data:
+
+networks:
+  pipeline-network:
+    name: pipeline-network
+    external: true
