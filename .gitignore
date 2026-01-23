@@ -1,0 +1,2 @@
+/data-lake/data/*.csv
+/data-lake/data/*.parquet

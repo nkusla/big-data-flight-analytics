@@ -1,0 +1,91 @@
+services:
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: namenode
+    hostname: namenode
+    ports:
+      - "9870:9870"   # NameNode Web UI
+      - "9000:9000"   # NameNode RPC
+      - "8020:8020"   # NameNode service RPC
+    volumes:
+      - namenode-data:/hadoop/dfs/name
+      - ./data:/data
+    env_file:
+      - .env
+    environment:
+      - CLUSTER_NAME=flight-analytics
+      - HDFS_CONF_dfs_replication=3
+    networks:
+      - hadoop-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9870"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  datanode1:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode1
+    hostname: datanode1
+    ports:
+      - "9864:9864"   # DataNode Web UI
+    volumes:
+      - datanode1-data:/hadoop/dfs/data
+    env_file:
+      - .env
+    environment:
+      - SERVICE_PRECONDITION=namenode:9870
+      - HDFS_CONF_dfs_replication=3
+    networks:
+      - hadoop-network
+    depends_on:
+      namenode:
+        condition: service_healthy
+
+  datanode2:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode2
+    hostname: datanode2
+    ports:
+      - "9865:9864"   # DataNode Web UI
+    volumes:
+      - datanode2-data:/hadoop/dfs/data
+    env_file:
+      - .env
+    environment:
+      - SERVICE_PRECONDITION=namenode:9870
+      - HDFS_CONF_dfs_replication=3
+    networks:
+      - hadoop-network
+    depends_on:
+      namenode:
+        condition: service_healthy
+
+  datanode3:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode3
+    hostname: datanode3
+    ports:
+      - "9866:9864"   # DataNode Web UI
+    volumes:
+      - datanode3-data:/hadoop/dfs/data
+    env_file:
+      - .env
+    environment:
+      - SERVICE_PRECONDITION=namenode:9870
+      - HDFS_CONF_dfs_replication=3
+    networks:
+      - hadoop-network
+    depends_on:
+      namenode:
+        condition: service_healthy
+
+volumes:
+  namenode-data:
+  datanode1-data:
+  datanode2-data:
+  datanode3-data:
+
+networks:
+  hadoop-network:
+    driver: bridge
