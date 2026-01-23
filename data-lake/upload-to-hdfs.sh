@@ -5,14 +5,14 @@
 HDFS_DATA_DIR="/data/raw"
 DATA_DIR="./data"
 
-echo "Checking if namenode container is running..."
-if ! docker ps | grep -q namenode; then
-    echo "Error: namenode container is not running. Please start it with: docker-compose up -d"
+echo "Checking if hdfs-namenode container is running..."
+if ! docker ps | grep -q hdfs-namenode; then
+    echo "Error: hdfs-namenode container is not running. Please start it with: docker-compose up -d"
     exit 1
 fi
 
 echo "Creating HDFS directory: $HDFS_DATA_DIR"
-docker exec namenode hdfs dfs -mkdir -p $HDFS_DATA_DIR
+docker exec hdfs-namenode hdfs dfs -mkdir -p $HDFS_DATA_DIR
 
 echo "Uploading CSV files from $DATA_DIR to HDFS..."
 if [ ! -d "$DATA_DIR" ]; then
@@ -32,7 +32,7 @@ fi
 for file in $CSV_FILES; do
     filename=$(basename "$file")
     echo "Uploading $filename to HDFS..."
-    docker exec namenode hdfs dfs -put "/data/$filename" "$HDFS_DATA_DIR/"
+    docker exec hdfs-namenode hdfs dfs -put "/data/$filename" "$HDFS_DATA_DIR/"
     if [ $? -eq 0 ]; then
         echo "✓ Successfully uploaded $filename"
     else
@@ -42,7 +42,7 @@ done
 
 echo ""
 echo "Listing files in HDFS $HDFS_DATA_DIR:"
-docker exec namenode hdfs dfs -ls $HDFS_DATA_DIR
+docker exec hdfs-namenode hdfs dfs -ls $HDFS_DATA_DIR
 
 echo ""
 echo "Done! Files are available in HDFS at $HDFS_DATA_DIR"

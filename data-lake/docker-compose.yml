@@ -1,14 +1,14 @@
 services:
-  namenode:
+  hdfs-namenode:
     image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
-    container_name: namenode
-    hostname: namenode
+    container_name: hdfs-namenode
+    hostname: hdfs-namenode
     ports:
       - "9870:9870"   # NameNode Web UI
       - "9000:9000"   # NameNode RPC
       - "8020:8020"   # NameNode service RPC
     volumes:
-      - namenode-data:/hadoop/dfs/name
+      - hdfs-namenode-data:/hadoop/dfs/name
       - ./data:/data
     env_file:
       - .env
@@ -23,68 +23,68 @@ services:
       timeout: 10s
       retries: 3
 
-  datanode1:
+  hdfs-datanode-1:
     image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
-    container_name: datanode1
-    hostname: datanode1
+    container_name: hdfs-datanode-1
+    hostname: hdfs-datanode-1
     ports:
       - "9864:9864"   # DataNode Web UI
     volumes:
-      - datanode1-data:/hadoop/dfs/data
+      - hdfs-datanode-1-data:/hadoop/dfs/data
     env_file:
       - .env
     environment:
-      - SERVICE_PRECONDITION=namenode:9870
+      - SERVICE_PRECONDITION=hdfs-namenode:9870
       - HDFS_CONF_dfs_replication=3
     networks:
       - pipeline-network
     depends_on:
-      namenode:
+      hdfs-namenode:
         condition: service_healthy
 
-  datanode2:
+  hdfs-datanode-2:
     image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
-    container_name: datanode2
-    hostname: datanode2
+    container_name: hdfs-datanode-2
+    hostname: hdfs-datanode-2
     ports:
       - "9865:9864"   # DataNode Web UI
     volumes:
-      - datanode2-data:/hadoop/dfs/data
+      - hdfs-datanode-2-data:/hadoop/dfs/data
     env_file:
       - .env
     environment:
-      - SERVICE_PRECONDITION=namenode:9870
+      - SERVICE_PRECONDITION=hdfs-namenode:9870
       - HDFS_CONF_dfs_replication=3
     networks:
       - pipeline-network
     depends_on:
-      namenode:
+      hdfs-namenode:
         condition: service_healthy
 
-  datanode3:
+  hdfs-datanode-3:
     image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
-    container_name: datanode3
-    hostname: datanode3
+    container_name: hdfs-datanode-3
+    hostname: hdfs-datanode-3
     ports:
       - "9866:9864"   # DataNode Web UI
     volumes:
-      - datanode3-data:/hadoop/dfs/data
+      - hdfs-datanode-3-data:/hadoop/dfs/data
     env_file:
       - .env
     environment:
-      - SERVICE_PRECONDITION=namenode:9870
+      - SERVICE_PRECONDITION=hdfs-namenode:9870
       - HDFS_CONF_dfs_replication=3
     networks:
       - pipeline-network
     depends_on:
-      namenode:
+      hdfs-namenode:
         condition: service_healthy
 
 volumes:
-  namenode-data:
-  datanode1-data:
-  datanode2-data:
-  datanode3-data:
+  hdfs-namenode-data:
+  hdfs-datanode-1-data:
+  hdfs-datanode-2-data:
+  hdfs-datanode-3-data:
 
 networks:
   pipeline-network:

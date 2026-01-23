@@ -9,13 +9,13 @@ def main():
 		# Create SparkSession
 		spark = SparkSession.builder \
 			.appName("HDFS Ping") \
-			.config("spark.hadoop.fs.defaultFS", "hdfs://namenode:9000") \
+			.config("spark.hadoop.fs.defaultFS", "hdfs://hdfs-namenode:9000") \
 			.getOrCreate()
 
 		spark.sparkContext.setLogLevel("ERROR")
 
 		hadoop = spark.sparkContext._jvm.org.apache.hadoop.fs.FileSystem.get(
-			spark.sparkContext._jvm.java.net.URI("hdfs://namenode:9000"),
+			spark.sparkContext._jvm.java.net.URI("hdfs://hdfs-namenode:9000"),
 			spark.sparkContext._jsc.hadoopConfiguration()
 		)
 
