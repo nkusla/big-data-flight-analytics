@@ -4,7 +4,7 @@ services:
     container_name: spark-master
     hostname: spark-master
     ports:
-      - "8080:8080"   # Spark Master Web UI
+      - "8090:8080"   # Spark Master Web UI
       - "7077:7077"   # Spark Master RPC
     command: ["/opt/spark/sbin/start-master.sh"]
     environment:
