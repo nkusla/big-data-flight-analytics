@@ -8,15 +8,21 @@ from pyspark.sql.types import *
 def main():
 	spark = None
 	try:
-		# Create SparkSession
+		# MongoDB connection details
+		mongo_database = "flight_analytics"
+		mongo_uri = f"mongodb://admin:admin123@mongodb:27017/{mongo_database}?authSource=admin"
+		mongo_collection = "airline_otp"
+
+		# Create SparkSession with MongoDB connector
 		spark = SparkSession.builder \
 			.appName("Process Data") \
 			.config("spark.hadoop.fs.defaultFS", "hdfs://hdfs-namenode:9000") \
+			.config("spark.mongodb.write.connection.uri", mongo_uri) \
 			.getOrCreate()
 
 		spark.sparkContext.setLogLevel("ERROR")
 
-		df = spark.read.csv("hdfs://hdfs-namenode:9000/data/raw/*.csv", header=True, inferSchema=True)
+		df = spark.read.csv("/data/raw/*.csv", header=True, inferSchema=True)
 
 		result = df.groupBy("Airline").agg(
 			F.avg(
@@ -24,12 +30,20 @@ def main():
 			).alias("OTP")
 		).orderBy("OTP", ascending=False)
 
-		result.show()
+		# result.show()
 
-		# Write result to HDFS
-		path = "/data/processed/otp"
-		result.write.mode("overwrite").csv(path, header=True)
-		print(f"✓ Result written to {path}")
+		# Write result to HDFS (backup)
+		hdfs_path = "/data/curated/otp"
+		result.write.mode("overwrite").csv(hdfs_path, header=True)
+		print(f"✓ Result written to HDFS: {hdfs_path}")
+
+		# Write result to MongoDB
+		result.write \
+			.format("mongodb") \
+			.mode("overwrite") \
+			.option("collection", mongo_collection) \
+			.save()
+		print(f"✓ Result written to MongoDB: {mongo_database}.{mongo_collection}")
 
 	except Exception as e:
 		print(f"✗ Failed to process data: {e}")

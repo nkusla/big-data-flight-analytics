@@ -36,5 +36,7 @@ echo ""
 # Run spark-submit in the master container
 docker exec -it spark-master /opt/spark/bin/spark-submit \
     --master spark://spark-master:7077 \
+    --conf spark.jars.ivy=/tmp/.ivy2 \
+    --packages org.mongodb.spark:mongo-spark-connector_2.12:10.4.1 \
     "$@" \
     "$CONTAINER_PATH"

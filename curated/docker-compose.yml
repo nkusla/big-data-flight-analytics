@@ -1,7 +1,7 @@
 services:
   mongodb:
     image: mongo:7.0
-    container_name: mongodb-curated
+    container_name: mongodb
     hostname: mongodb
     restart: unless-stopped
     ports:
@@ -27,11 +27,11 @@ services:
 
   mongo-express:
     image: mongo-express:1.0.2
-    container_name: mongo-express-curated
+    container_name: mongo-express
     hostname: mongo-express
     restart: unless-stopped
     ports:
-      - "${MONGO_EXPRESS_PORT:-8081}:8081"
+      - "${MONGO_EXPRESS_PORT:-8085}:8081"
     env_file:
       - .env
     environment:
@@ -53,6 +53,6 @@ volumes:
     driver: local
 
 networks:
-  curated-network:
+  pipeline-network:
     name: pipeline-network
     external: true
