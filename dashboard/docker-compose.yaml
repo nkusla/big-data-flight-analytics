@@ -1,0 +1,49 @@
+services:
+  metabase-postgres:
+    image: postgres:17.7
+    container_name: metabase-postgres
+    hostname: metabase-postgres
+    ports:
+      - 5433:5432
+    environment:
+      POSTGRES_USER: metabase
+      POSTGRES_DB: metabasedb
+      POSTGRES_PASSWORD: metabasepass
+    volumes:
+      - metabase-db-volume:/var/lib/postgresql/data
+      - ./config:/config:rw
+    networks:
+      - pipeline-network
+
+  metabase:
+    image: metabase/metabase:latest
+    container_name: metabase
+    hostname: metabase
+    volumes:
+      - ./data:/dev/random:ro
+    ports:
+      - 3000:3000
+    depends_on:
+      - metabase-postgres
+    environment:
+      MB_DB_TYPE: postgres
+      MB_DB_DBNAME: metabasedb
+      MB_DB_PORT: 5432
+      MB_DB_USER: metabase
+      MB_DB_PASS: metabasepass
+      MB_DB_HOST: metabase-postgres
+    healthcheck:
+      test: curl --fail -I http://localhost:3000/api/health || exit 1
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks:
+      - pipeline-network
+
+volumes:
+  metabase-db-volume:
+
+networks:
+  pipeline-network:
+    name: pipeline-network
+    external: true
