@@ -1,0 +1,17 @@
+services:
+  stream-processor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: stream-processor
+    hostname: stream-processor
+    networks:
+      - pipeline-network
+    restart: unless-stopped
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka-broker-1:9092,kafka-broker-2:9092
+
+networks:
+  pipeline-network:
+    name: pipeline-network
+    external: true
