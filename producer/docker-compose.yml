@@ -1,0 +1,25 @@
+services:
+  flight-producer:
+    build: .
+    container_name: flight-producer
+    hostname: flight-producer
+    networks:
+      - pipeline-network
+    volumes:
+      - ./data:/app/data:ro
+    command: >
+      python producer.py
+      --mode api
+      --bootstrap-servers kafka-broker-1:9092,kafka-broker-2:9092
+      --topic flight-data
+      --interval 10
+    restart: unless-stopped
+
+networks:
+  pipeline-network:
+    name: pipeline-network
+    external: true
+
+# Note: kafka-broker-1 and kafka-broker-2 are expected to be running
+# in the stream-cluster. Start them first with:
+# cd ../stream-cluster && docker-compose up -d

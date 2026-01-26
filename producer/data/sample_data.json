@@ -1,0 +1,44 @@
+[
+  {
+    "timestamp": 1706529600,
+    "icao24": "3c6444",
+    "callsign": "DLH123",
+    "origin_country": "Germany",
+    "longitude": 8.5622,
+    "latitude": 50.0379,
+    "geo_altitude": 10000.5,
+    "velocity": 250.3,
+    "true_track": 180.5,
+    "vertical_rate": 5.2,
+    "on_ground": false,
+    "baro_altitude": 9900.2
+  },
+  {
+    "timestamp": 1706529601,
+    "icao24": "a12b34",
+    "callsign": "UAL456",
+    "origin_country": "United States",
+    "longitude": -122.4194,
+    "latitude": 37.7749,
+    "geo_altitude": 11500.0,
+    "velocity": 280.0,
+    "true_track": 270.0,
+    "vertical_rate": -2.5,
+    "on_ground": false,
+    "baro_altitude": 11400.0
+  },
+  {
+    "timestamp": 1706529602,
+    "icao24": "abc123",
+    "callsign": "BAW789",
+    "origin_country": "United Kingdom",
+    "longitude": -0.1276,
+    "latitude": 51.5074,
+    "geo_altitude": 0.0,
+    "velocity": 0.0,
+    "true_track": 0.0,
+    "vertical_rate": 0.0,
+    "on_ground": true,
+    "baro_altitude": 0.0
+  }
+]
