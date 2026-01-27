@@ -77,9 +77,11 @@ x-airflow-common:
   volumes:
     - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
     #- ${AIRFLOW_PROJ_DIR:-.}/logs:/opt/airflow/logs
+    - airflow_logs:/opt/airflow/logs
     - ${AIRFLOW_PROJ_DIR:-.}/config:/opt/airflow/config
     - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
     - ${AIRFLOW_PROJ_DIR:-.}/src:/opt/airflow/src
+    - ${AIRFLOW_PROJ_DIR:-.}/../data-lake/data:/opt/airflow/data:ro
   user: "${AIRFLOW_UID:-50000}:0"
   networks:
     - pipeline-network
@@ -350,6 +352,7 @@ services:
 
 volumes:
   postgres-db-volume:
+  airflow_logs:
 
 networks:
   pipeline-network:
