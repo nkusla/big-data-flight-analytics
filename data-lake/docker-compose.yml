@@ -1,5 +1,6 @@
 services:
   hdfs-namenode:
+    platform: linux/amd64
     image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
     container_name: hdfs-namenode
     hostname: hdfs-namenode
@@ -21,9 +22,10 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:9870"]
       interval: 30s
       timeout: 10s
-      retries: 3
+      retries: 10
 
   hdfs-datanode-1:
+    platform: linux/amd64 # This is added to ensure compatibility with Apple Silicon Macs
     image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
     container_name: hdfs-datanode-1
     hostname: hdfs-datanode-1
@@ -43,6 +45,7 @@ services:
         condition: service_healthy
 
   hdfs-datanode-2:
+    platform: linux/amd64
     image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
     container_name: hdfs-datanode-2
     hostname: hdfs-datanode-2
@@ -62,6 +65,7 @@ services:
         condition: service_healthy
 
   hdfs-datanode-3:
+    platform: linux/amd64
     image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
     container_name: hdfs-datanode-3
     hostname: hdfs-datanode-3
