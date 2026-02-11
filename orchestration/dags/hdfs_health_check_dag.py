@@ -6,31 +6,29 @@ to trigger alerts or prevent other DAGs from running if HDFS is down.
 """
 
 from datetime import datetime, timedelta
-from airflow import DAG
+from airflow.sdk import dag
 from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
-from airflow.operators.python import PythonOperator
 
-# Default arguments for the DAG
-default_args = {
-    'owner': 'airflow',
-    'depends_on_past': False,
-    'email_on_failure': False,
-    'email_on_retry': False,
-    'retries': 1,
-    'retry_delay': timedelta(minutes=2),
-    'execution_timeout': timedelta(minutes=5),
-}
 
-# Define the DAG
-with DAG(
+@dag(
     dag_id='hdfs_health_check',
-    default_args=default_args,
     description='Monitor HDFS health and connectivity',
-    #schedule='*/15 * * * *',  # Run every 15 minutes
+    # schedule='*/15 * * * *',  # Run every 15 minutes
     start_date=datetime(2026, 1, 27),
     catchup=False,
     tags=['monitoring', 'health-check', 'hdfs'],
-) as dag:
+    default_args={
+        'owner': 'airflow',
+        'depends_on_past': False,
+        'email_on_failure': False,
+        'email_on_retry': False,
+        'retries': 1,
+        'retry_delay': timedelta(minutes=2),
+        'execution_timeout': timedelta(minutes=5),
+    },
+)
+def hdfs_health_check():
+    """Monitor HDFS health and connectivity."""
 
     # Check HDFS connectivity
     check_hdfs = SparkSubmitOperator(
@@ -48,5 +46,8 @@ with DAG(
         """
     )
 
-    # Set task dependencies
-    check_hdfs
+    return check_hdfs
+
+
+# Instantiate the DAG
+hdfs_health_check()
