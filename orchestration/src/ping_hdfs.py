@@ -1,18 +1,12 @@
 #!/usr/bin/env python3
 """Simple HDFS connectivity check."""
 
-from pyspark.sql import SparkSession
+from shared import *
 
 def main():
 	spark = None
 	try:
-		# Create SparkSession
-		spark = SparkSession.builder \
-			.appName("HDFS Ping") \
-			.config("spark.hadoop.fs.defaultFS", "hdfs://hdfs-namenode:9000") \
-			.getOrCreate()
-
-		spark.sparkContext.setLogLevel("ERROR")
+		spark = build_spark_session("HDFS Ping")
 
 		hadoop = spark.sparkContext._jvm.org.apache.hadoop.fs.FileSystem.get(
 			spark.sparkContext._jvm.java.net.URI("hdfs://hdfs-namenode:9000"),

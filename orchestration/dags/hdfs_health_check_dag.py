@@ -11,43 +11,38 @@ from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOpe
 
 
 @dag(
-    dag_id='hdfs_health_check',
-    description='Monitor HDFS health and connectivity',
-    # schedule='*/15 * * * *',  # Run every 15 minutes
-    start_date=datetime(2026, 1, 27),
-    catchup=False,
-    tags=['monitoring', 'health-check', 'hdfs'],
-    default_args={
-        'owner': 'airflow',
-        'depends_on_past': False,
-        'email_on_failure': False,
-        'email_on_retry': False,
-        'retries': 1,
-        'retry_delay': timedelta(minutes=2),
-        'execution_timeout': timedelta(minutes=5),
-    },
+	dag_id='hdfs_health_check',
+	description='Monitor HDFS health and connectivity',
+	start_date=datetime(2026, 1, 27),
+	catchup=False,
+	tags=['monitoring', 'health-check', 'hdfs'],
+	default_args={
+		'owner': 'airflow',
+		'depends_on_past': False,
+		'email_on_failure': False,
+		'email_on_retry': False,
+		'retries': 1,
+		'retry_delay': timedelta(minutes=2),
+		'execution_timeout': timedelta(minutes=5),
+	},
 )
+
 def hdfs_health_check():
-    """Monitor HDFS health and connectivity."""
+	check_hdfs = SparkSubmitOperator(
+		task_id='check_hdfs_connectivity',
+		application='/opt/airflow/src/ping_hdfs.py',
+		name='hdfs_connectivity_check',
+		conn_id='SPARK_CONNECTION',
+		conf={
+			'spark.hadoop.fs.defaultFS': 'hdfs://hdfs-namenode:9000',
+		},
+		verbose=False,
+		doc_md="""
+		### Check HDFS Connectivity
+		Verifies that HDFS is accessible and responding.
+		"""
+	)
 
-    # Check HDFS connectivity
-    check_hdfs = SparkSubmitOperator(
-        task_id='check_hdfs_connectivity',
-        application='/opt/airflow/src/ping_hdfs.py',
-        name='hdfs_connectivity_check',
-        conn_id='SPARK_CONNECTION',
-        conf={
-            'spark.hadoop.fs.defaultFS': 'hdfs://hdfs-namenode:9000',
-        },
-        verbose=False,
-        doc_md="""
-        ### Check HDFS Connectivity
-        Verifies that HDFS is accessible and responding.
-        """
-    )
+	return check_hdfs
 
-    return check_hdfs
-
-
-# Instantiate the DAG
 hdfs_health_check()
