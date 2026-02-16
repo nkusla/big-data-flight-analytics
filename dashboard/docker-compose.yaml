@@ -32,6 +32,7 @@ services:
       MB_DB_USER: metabase
       MB_DB_PASS: metabasepass
       MB_DB_HOST: metabase-postgres
+      MB_ENABLE_QUERY_CACHING: "false"
     healthcheck:
       test: curl --fail -I http://localhost:3000/api/health || exit 1
       interval: 15s
