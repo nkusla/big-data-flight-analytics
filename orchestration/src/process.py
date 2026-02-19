@@ -14,7 +14,7 @@ def calculate_airline_stats(spark: SparkSession, df: DataFrame):
 	airline_stats = df.groupBy(F.col("Operating_Airline").alias("AirlineCode")).agg(
 		F.avg(
 			F.abs(F.col("ActualElapsedTime") - F.col("CRSElapsedTime"))
-		).alias("ErrorMinutes"),
+		).alias("AvgErrorMinutes"),
 		F.count("*").alias("FlightCount"),
 		F.count(F.when(F.col("ArrDelayMinutes") > DELAY_THRESHOLD, 1)).alias("DelayedFlightCount"),
 	) \
@@ -34,8 +34,12 @@ def calculate_airport_departure_delays(spark: SparkSession, df: DataFrame):
 
 	mongo_collection = "airport_departure_delays"
 	airport_departure_delays_result = df.groupBy("Origin", "OriginCityName", "OriginStateName") \
-		.agg(F.avg(F.col("DepDelayMinutes")).alias("AvgDepDelayMinutes")) \
-		.orderBy(F.col("AvgDepDelayMinutes").desc())
+		.agg(
+			F.avg(F.col("DepDelayMinutes")).alias("AvgDepDelayMinutes"),
+			F.count("*").alias("FlightCount")
+		) \
+	.drop("FlightCount") \
+	.orderBy(F.col("AvgDepDelayMinutes").desc())
 
 	airport_departure_delays_result = airport_departure_delays_result \
 		.withColumnRenamed("Origin", "AirportCode")
@@ -84,7 +88,17 @@ def calculate_delay_reasons(spark: SparkSession, df: DataFrame):
 		F.avg("NASDelay").alias("AvgNASDelayMinutes"),
 		F.avg("SecurityDelay").alias("AvgSecurityDelayMinutes"),
 		F.avg("LateAircraftDelay").alias("AvgLateAircraftDelayMinutes"),
-	)
+	).select(
+		F.expr(
+			"stack(5, "
+			"'CarrierDelay', AvgCarrierDelayMinutes, "
+			"'WeatherDelay', AvgWeatherDelayMinutes, "
+			"'NASDelay', AvgNASDelayMinutes, "
+			"'SecurityDelay', AvgSecurityDelayMinutes, "
+			"'LateAircraftDelay', AvgLateAircraftDelayMinutes"
+			") as (DelayReason, AvgDelayMinutes)"
+		)
+	).select("DelayReason", "AvgDelayMinutes")
 
 	save_to_mongodb(delay_reasons_result, mongo_collection)
 
