@@ -1,20 +1,19 @@
 #!/usr/bin/env python3
-"""
-Simple Flight Data Producer
-Fetches data from OpenSky API or reads from files and sends to Kafka
-"""
 
 import json
 import time
 import argparse
+import os
+from pathlib import Path
+from dotenv import load_dotenv
 from confluent_kafka import Producer
 from opensky_api import OpenSkyApi
-import os
 
+# Load .env from same directory as this script (e.g. /app/.env in Docker)
+load_dotenv(Path(__file__).resolve().parent / ".env")
 
 class FlightDataProducer:
 	def __init__(self, bootstrap_servers='localhost:29092', topic='flight-data'):
-		"""Initialize Kafka producer"""
 		conf = {
 			'bootstrap.servers': bootstrap_servers,
 			'client.id': 'flight-data-producer',
@@ -27,28 +26,23 @@ class FlightDataProducer:
 		print(f"Publishing to topic: {topic}")
 
 	def delivery_callback(self, err, msg):
-		"""Callback for message delivery reports"""
 		if err is not None:
 			print(f"Message delivery failed: {err}")
 		else:
 			print(f"Message delivered to {msg.topic()} [{msg.partition()}] at offset {msg.offset()}")
 
 	def send_to_kafka(self, data):
-		"""Send data to Kafka topic"""
 		try:
-			# Serialize data to JSON string and encode to bytes
 			value = json.dumps(data).encode('utf-8')
-			
-			# Produce message asynchronously
+
 			self.producer.produce(
 				self.topic,
 				value=value,
 				callback=self.delivery_callback
 			)
-			
-			# Trigger delivery reports by polling
+
 			self.producer.poll(0)
-			
+
 			print(f"Sent: {data}")
 			return True
 		except BufferError:
@@ -60,29 +54,29 @@ class FlightDataProducer:
 			return False
 
 	def produce_from_opensky(self, interval=10, bbox=None):
-		"""
-		Fetch real-time data from OpenSky API and send to Kafka
 
-		Args:
-			interval: seconds between API calls (minimum 10s for anonymous)
-			bbox: optional bounding box (min_lat, max_lat, min_lon, max_lon)
-		"""
-		api = OpenSkyApi()
+		username = os.environ.get("OPENSKY_USERNAME") or None
+		password = os.environ.get("OPENSKY_PASSWORD") or None
+		api = None
+		if username is None or password is None:
+			print("No OpenSky credentials found in environment variables")
+			api = OpenSkyApi()
+		else:
+			api = OpenSkyApi(username=username, password=password)
+
 		print(f"Starting OpenSky producer (interval: {interval}s)")
 
 		if bbox:
-			print(f"Using bounding box: {bbox}")
+			print(f"Using bounding box (min_lat, max_lat, min_lon, max_lon): {bbox}")
 
 		try:
 			while True:
 				try:
-					# Fetch states from OpenSky
 					states = api.get_states(bbox=bbox) if bbox else api.get_states()
 
 					if states and states.states:
 						print(f"\nFetched {len(states.states)} aircraft states at {states.time}")
 
-						# Send each state vector to Kafka
 						for state in states.states:
 							flight_data = {
 								'timestamp': states.time,
@@ -98,9 +92,10 @@ class FlightDataProducer:
 								'on_ground': state.on_ground,
 								'baro_altitude': state.baro_altitude
 							}
+							self.dump_to_disk(flight_data)
 							self.send_to_kafka(flight_data)
 					else:
-						print("No states received")
+						print("No states received (Rate limit exceeded)")
 
 				except Exception as e:
 					print(f"Error fetching from OpenSky: {e}")
@@ -112,36 +107,37 @@ class FlightDataProducer:
 			print("\nStopping producer...")
 			self.close()
 
-	def produce_from_file(self, file_path, interval=1):
-		"""
-		Read flight data from file and send to Kafka
-
-		Args:
-			file_path: path to JSON or JSONL file
-			interval: seconds between sending each record
-		"""
+	def produce_from_file(self, file_path, interval=1, partition_size=None):
 		print(f"Reading from file: {file_path}")
 
 		try:
 			with open(file_path, 'r') as f:
-				# Check if it's JSONL (one JSON per line) or single JSON array
 				content = f.read().strip()
 
 				if content.startswith('['):
-					# JSON array
 					data = json.loads(content)
 				else:
-					# JSONL - one JSON per line
 					f.seek(0)
 					data = [json.loads(line) for line in f if line.strip()]
 
-				print(f"Found {len(data)} records")
+			total = len(data)
+			print(f"Found {total} records")
 
-				for record in data:
+			if partition_size is None or partition_size <= 0:
+				partitions = [data]
+			else:
+				partitions = [data[i:i + partition_size] for i in range(0, total, partition_size)]
+
+			print(f"Sending in {len(partitions)} partition(s) (partition_size={partition_size or 'all'})")
+
+			for part_idx, partition in enumerate(partitions):
+				print(f"Partition {part_idx + 1}/{len(partitions)}: sending {len(partition)} records")
+				for record in partition:
 					self.send_to_kafka(record)
-					time.sleep(interval)
 
-				print(f"\nFinished sending {len(data)} records")
+				time.sleep(interval)
+
+			print(f"\nFinished sending {total} records")
 
 		except KeyboardInterrupt:
 			print("\nStopping producer...")
@@ -149,8 +145,6 @@ class FlightDataProducer:
 			self.close()
 
 	def close(self):
-		"""Close Kafka producer"""
-		# Flush any remaining messages
 		remaining = self.producer.flush(timeout=10)
 		if remaining > 0:
 			print(f"Warning: {remaining} messages were not delivered")
@@ -158,6 +152,8 @@ class FlightDataProducer:
 
 
 def main():
+	print("Starting Flight Data Producer...")
+
 	parser = argparse.ArgumentParser(description='Flight Data Kafka Producer')
 	parser.add_argument('--bootstrap-servers', default='localhost:29092',
 						help='Kafka bootstrap servers (default: localhost:29092)')
@@ -167,23 +163,27 @@ def main():
 						help='Data source: api (OpenSky) or file')
 	parser.add_argument('--interval', type=int, default=10,
 						help='Seconds between API calls or file records (default: 10 for API, 1 for file)')
+	parser.add_argument('--partition-size', type=int, default=None, metavar='N',
+						help='When using file mode: send data in batches of N records (partitions). If omitted, send all records.')
 	parser.add_argument('--bbox', nargs=4, type=float, metavar=('MIN_LAT', 'MAX_LAT', 'MIN_LON', 'MAX_LON'),
 						help='Bounding box for OpenSky API (e.g., 45.8389 47.8229 5.9962 10.5226 for Switzerland)')
 
 	args = parser.parse_args()
 
-	# Create producer
 	producer = FlightDataProducer(
 		bootstrap_servers=args.bootstrap_servers,
 		topic=args.topic
 	)
 
-	# Run based on mode
 	if args.mode == 'api':
 		bbox = tuple(args.bbox) if args.bbox else None
 		producer.produce_from_opensky(interval=args.interval, bbox=bbox)
 	else:
-		producer.produce_from_file("data/sample_data.json", interval=args.interval)
+		producer.produce_from_file(
+			"data/opensky_states.json",
+			interval=args.interval,
+			partition_size=args.partition_size
+		)
 
 
 if __name__ == '__main__':

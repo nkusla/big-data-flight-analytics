@@ -3,15 +3,22 @@ services:
     build: .
     container_name: flight-producer
     hostname: flight-producer
+    environment:
+      PYTHONUNBUFFERED: "1"
     networks:
       - pipeline-network
     volumes:
-      - ./data:/app/data:ro
+      - ./data:/app/data:rw
+      - ./.env:/app/.env:ro
+    # Bouding box of parts of Texas, USA
+    # Min lat, Max lat, Min lon, Max lon
+    # --bbox 28.990724 31.925941 -99.063721 -94.471436
     command: >
       python producer.py
-      --mode api
+      --mode file
       --bootstrap-servers kafka-broker-1:9092,kafka-broker-2:9092
       --topic flight-data
+      --partition-size 10
       --interval 10
     restart: unless-stopped
 
