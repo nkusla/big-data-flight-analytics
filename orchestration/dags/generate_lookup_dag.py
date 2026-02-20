@@ -14,8 +14,8 @@ from airflow.sdk import dag
 from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
 
 @dag(
-	dag_id='flights_lookup_to_kafka',
-	description='Compute flights lookup data and write to Kafka for Global KTable',
+	dag_id='generate_lookups',
+	description='Generate flights lookup data and airports lookup data',
 	start_date=datetime(2026, 1, 27),
 	max_active_runs=1,
 	catchup=False,
@@ -29,9 +29,9 @@ from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOpe
 	},
 )
 
-def flights_lookup_to_kafka():
+def generate_lookups():
 	flights_lookup = SparkSubmitOperator(
-		task_id='flights_lookup_to_kafka',
+		task_id='flighs_lookup_to_kafka',
 		application='/opt/airflow/src/flights_lookup_to_kafka.py',
 		name='flights_lookup_to_kafka',
 		conn_id='SPARK_CONNECTION',
@@ -65,4 +65,4 @@ def flights_lookup_to_kafka():
 	[flights_lookup, airports_lookup]
 
 
-flights_lookup_to_kafka()
+generate_lookups()

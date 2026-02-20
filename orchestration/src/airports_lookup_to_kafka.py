@@ -3,12 +3,13 @@
 Script to read busiest airports from curated parquet and write to Kafka (e.g. for Global KTable).
 
 Reads /data/curated/busiest_airports.parquet (written by process.calculate_busiest_airports).
+Refreshes the topic (delete + recreate) before writing so the Global KTable sees only the current snapshot.
 """
 
 import json
 import os
 from pyspark.sql import SparkSession
-from shared import build_spark_session
+from shared import build_spark_session, refresh_topic
 from confluent_kafka import Producer
 
 AIRPORTS_LOOKUP_TOPIC = os.environ.get("AIRPORTS_LOOKUP_TOPIC")
@@ -60,6 +61,7 @@ def main():
 		if not rows:
 			print("No rows to send (parquet is empty).")
 			return
+		refresh_topic(AIRPORTS_LOOKUP_TOPIC, KAFKA_BOOTSTRAP_SERVERS)
 		send_to_kafka(rows, AIRPORTS_LOOKUP_TOPIC, KAFKA_BOOTSTRAP_SERVERS)
 	except Exception as e:
 		print(f"✗ Failed: {e}")

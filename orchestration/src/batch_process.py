@@ -75,10 +75,13 @@ def calculate_busiest_airports(spark: SparkSession, df: DataFrame):
 			F.when(F.col("_total") > 0, F.col("FlightCount") / F.col("_total") * 100).otherwise(0.0)
 		) \
 		.drop("_min", "_max", "_total") \
+		.orderBy(F.col("BusynessScorePercent").desc())
 
 	busiest_airports_result = join_with_airports_metadata(spark, busiest_airports_result)
 
-	busiest_airports_result.write \
+	top_10_busiest_airports_result = busiest_airports_result.limit(10)
+
+	top_10_busiest_airports_result.write \
 		.mode("overwrite") \
 		.parquet("/data/curated/busiest_airports.parquet")
 
