@@ -7,5 +7,7 @@ COPY . /usr/
 RUN mvn -f /usr/pom.xml clean package -o
 
 FROM eclipse-temurin:21-jre-alpine
-COPY --from=build /usr/target /usr
-CMD ["java", "-cp", "/usr/kafka-streams-app-1.0-SNAPSHOT.jar:/usr/target/libraries/*", "com.flight_analytics.SimpleStreamProcessor"]
+RUN apk add --no-cache libstdc++
+COPY --from=build /usr/target/kafka-streams-app-1.0-SNAPSHOT.jar /app/
+COPY --from=build /usr/target/libraries /app/libraries
+CMD ["java", "-cp", "/app/kafka-streams-app-1.0-SNAPSHOT.jar:/app/libraries/*", "com.flight_analytics.StreamProcessor"]

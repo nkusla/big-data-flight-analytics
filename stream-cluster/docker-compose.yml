@@ -54,12 +54,71 @@ services:
       - kafka-broker-1
       - kafka-broker-2
     ports:
-      - "${KAFKA_UI_PORT:-8092}:8080"
+      - "8092:8080"
     networks:
       - pipeline-network
     environment:
       KAFKA_CLUSTERS_0_BOOTSTRAP_SERVERS: 'kafka-broker-1:9092,kafka-broker-2:9092'
       KAFKA_CLUSTERS_0_NAME: kafka-cluster
+
+  # Kafka Connect with MongoDB Sink Connector (sinks topic data to MongoDB)
+  connect:
+    build:
+      context: ./connect
+      dockerfile: Dockerfile
+    container_name: kafka-connect
+    hostname: connect
+    depends_on:
+      - kafka-broker-1
+      - kafka-broker-2
+    ports:
+      - "${CONNECT_PORT:-8083}:8083"
+    networks:
+      - pipeline-network
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: "kafka-broker-1:9092,kafka-broker-2:9092"
+      CONNECT_GROUP_ID: "kafka-connect-cluster"
+      CONNECT_CONFIG_STORAGE_TOPIC: "_connect-configs"
+      CONNECT_OFFSET_STORAGE_TOPIC: "_connect-offsets"
+      CONNECT_STATUS_STORAGE_TOPIC: "_connect-status"
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_KEY_CONVERTER: "org.apache.kafka.connect.storage.StringConverter"
+      CONNECT_VALUE_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+      CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
+      CONNECT_PLUGIN_PATH: "/usr/share/java,/usr/share/confluent-hub-components"
+      CONNECT_REST_ADVERTISED_HOST_NAME: "connect"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/connectors"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # One-off: register MongoDB sink connector(s) after Connect is healthy.
+  connect-init:
+    image: curlimages/curl:latest
+    container_name: connect-init
+    depends_on:
+      connect:
+        condition: service_healthy
+    networks:
+      - pipeline-network
+    volumes:
+      - ./connect/connectors:/connectors:ro
+    restart: "no"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        CONNECT_URL="http://connect:8083"
+        for f in /connectors/*.json; do
+          [ -f "$$f" ] || continue
+          echo "Registering $$f..."
+          curl -sf -X POST -H "Content-Type: application/json" \
+            -d @"$$f" "$$CONNECT_URL/connectors" || true
+        done
+        echo "Connect init done."
 
 networks:
   pipeline-network:
