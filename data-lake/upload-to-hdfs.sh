@@ -4,6 +4,7 @@
 
 HDFS_DATA_DIR="/data/raw"
 DATA_DIR="./data"
+METADATA_DIR="./metadata"
 
 echo "Checking if hdfs-namenode container is running..."
 if ! docker ps | grep -q hdfs-namenode; then
@@ -20,15 +21,14 @@ if [ ! -d "$DATA_DIR" ]; then
     exit 1
 fi
 
-# Find all CSV files in the data directory
 CSV_FILES=$(find "$DATA_DIR" -name "*.csv" -type f)
+METADATA_FILES=$(find "$METADATA_DIR" -name "*.csv" -type f)
 
 if [ -z "$CSV_FILES" ]; then
     echo "No CSV files found in $DATA_DIR"
     exit 0
 fi
 
-# Upload each CSV file
 for file in $CSV_FILES; do
     filename=$(basename "$file")
     echo "Uploading $filename to HDFS..."
@@ -40,9 +40,22 @@ for file in $CSV_FILES; do
     fi
 done
 
+for file in $METADATA_FILES; do
+    filename=$(basename "$file")
+    echo "Uploading $filename to HDFS..."
+    docker exec hdfs-namenode hdfs dfs -put "/data/$filename" "$HDFS_METADATA_DIR/"
+    if [ $? -eq 0 ]; then
+        echo "✓ Successfully uploaded $filename"
+    else
+        echo "✗ Failed to upload $filename"
+    fi
+done
+
 echo ""
 echo "Listing files in HDFS $HDFS_DATA_DIR:"
 docker exec hdfs-namenode hdfs dfs -ls $HDFS_DATA_DIR
-
+echo ""
+echo "Listing files in HDFS $HDFS_METADATA_DIR:"
+docker exec hdfs-namenode hdfs dfs -ls $HDFS_METADATA_DIR
 echo ""
 echo "Done! Files are available in HDFS at $HDFS_DATA_DIR"

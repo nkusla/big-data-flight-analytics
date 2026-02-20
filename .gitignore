@@ -1,5 +1,7 @@
 /data-lake/data/*.csv
 /data-lake/data/*.zip
 /data-lake/data/*.parquet
+/data-lake/data/*/*.csv
+
 __pycache__/
 docs/
