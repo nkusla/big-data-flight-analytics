@@ -68,9 +68,11 @@ RUN chown root:root /opt/spark/jars/mongodb-driver-sync-4.8.2.jar
 RUN chown root:root /opt/spark/jars/mongodb-driver-core-4.8.2.jar
 RUN chown root:root /opt/spark/jars/bson-4.8.2.jar
 
-# Environment
+# Environment: use same Python as Airflow for Spark driver
 ENV JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
 ENV PATH=$PATH:$SPARK_HOME/bin
+ENV PYSPARK_DRIVER_PYTHON=/usr/local/bin/python
+ENV PYSPARK_PYTHON=/usr/local/bin/python
 
 USER airflow
 

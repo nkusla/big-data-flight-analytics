@@ -18,9 +18,9 @@ services:
       --mode file
       --bootstrap-servers kafka-broker-1:9092,kafka-broker-2:9092
       --topic flight-data
-      --partition-size 10
-      --interval 10
-    restart: unless-stopped
+      --partition-size 20
+      --interval 20
+    restart: no
 
 networks:
   pipeline-network:
