@@ -1,0 +1,15 @@
+{
+  "name": "mongodb-airline-counts-sink",
+  "config": {
+    "connector.class": "com.mongodb.kafka.connect.MongoSinkConnector",
+    "topics": "airline-aircraft-counts",
+    "connection.uri": "mongodb://admin:admin123@mongodb:27017",
+    "database": "flight_analytics",
+    "collection": "airline_aircraft_counts",
+    "key.converter": "org.apache.kafka.connect.storage.StringConverter",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter.schemas.enable": false,
+    "document.id.strategy": "com.mongodb.kafka.connect.sink.processor.id.strategy.ProvidedInValueStrategy",
+    "writemodel.strategy": "com.mongodb.kafka.connect.sink.writemodel.strategy.ReplaceOneDefaultStrategy"
+  }
+}

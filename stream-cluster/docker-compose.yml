@@ -47,6 +47,32 @@ services:
       KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
       CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
 
+  # One-off: create Kafka topics after broker is ready
+  kafka-init:
+    image: apache/kafka:4.1.1
+    container_name: kafka-init
+    depends_on:
+      - kafka-broker-1
+    networks:
+      - pipeline-network
+    environment:
+      KAFKA_TOPICS: "flights-data,flights-lookup,flights-processed,airline-aircraft-counts,airports-lookup"
+    restart: "no"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "Waiting for Kafka broker..."
+        until /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server kafka-broker-1:9092 2>/dev/null; do
+          sleep 2
+        done
+        echo "Creating topics..."
+        for topic in $$(echo "$$KAFKA_TOPICS" | tr ',' ' '); do
+          topic="$$(echo "$$topic" | xargs)"
+          [ -z "$$topic" ] && continue
+          /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka-broker-1:9092 --create --if-not-exists --topic "$$topic" --partitions 3 --replication-factor 1
+        done
+        echo "Topics ready."
+
   kafka-ui:
     image: provectuslabs/kafka-ui:v0.7.2
     container_name: kafka-ui
@@ -96,11 +122,13 @@ services:
       retries: 5
       start_period: 30s
 
-  # One-off: register MongoDB sink connector(s) after Connect is healthy.
+  # One-off: register MongoDB sink connector(s) after Connect is healthy and topics exist.
   connect-init:
     image: curlimages/curl:latest
     container_name: connect-init
     depends_on:
+      kafka-init:
+        condition: service_completed_successfully
       connect:
         condition: service_healthy
     networks:
