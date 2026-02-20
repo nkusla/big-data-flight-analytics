@@ -3,8 +3,8 @@
 # Script to automatically upload CSV files from data directory to HDFS
 
 HDFS_DATA_DIR="/data/raw"
+HDFS_METADATA_DIR="/data/metadata"
 DATA_DIR="./data"
-METADATA_DIR="./metadata"
 
 echo "Checking if hdfs-namenode container is running..."
 if ! docker ps | grep -q hdfs-namenode; then
@@ -15,6 +15,10 @@ fi
 echo "Creating HDFS directory: $HDFS_DATA_DIR"
 docker exec hdfs-namenode hdfs dfs -mkdir -p $HDFS_DATA_DIR
 
+echo "Creating HDFS directory: $HDFS_METADATA_DIR"
+docker exec hdfs-namenode hdfs dfs -mkdir -p $HDFS_METADATA_DIR
+
+
 echo "Uploading CSV files from $DATA_DIR to HDFS..."
 if [ ! -d "$DATA_DIR" ]; then
     echo "Error: Data directory $DATA_DIR does not exist"
@@ -22,7 +26,7 @@ if [ ! -d "$DATA_DIR" ]; then
 fi
 
 CSV_FILES=$(find "$DATA_DIR" -name "*.csv" -type f)
-METADATA_FILES=$(find "$METADATA_DIR" -name "*.csv" -type f)
+METADATA_FILES=$(find "$DATA_DIR/metadata" -name "*.csv" -type f)
 
 if [ -z "$CSV_FILES" ]; then
     echo "No CSV files found in $DATA_DIR"
@@ -30,6 +34,9 @@ if [ -z "$CSV_FILES" ]; then
 fi
 
 for file in $CSV_FILES; do
+    if [[ "$file" == *"/metadata/"* ]]; then
+        continue
+    fi
     filename=$(basename "$file")
     echo "Uploading $filename to HDFS..."
     docker exec hdfs-namenode hdfs dfs -put "/data/$filename" "$HDFS_DATA_DIR/"
@@ -42,8 +49,8 @@ done
 
 for file in $METADATA_FILES; do
     filename=$(basename "$file")
-    echo "Uploading $filename to HDFS..."
-    docker exec hdfs-namenode hdfs dfs -put "/data/$filename" "$HDFS_METADATA_DIR/"
+    echo "Uploading $filename (metadata) to HDFS..."
+    docker exec hdfs-namenode hdfs dfs -put "/data/metadata/$filename" "$HDFS_METADATA_DIR/"
     if [ $? -eq 0 ]; then
         echo "✓ Successfully uploaded $filename"
     else

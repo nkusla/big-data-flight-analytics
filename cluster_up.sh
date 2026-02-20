@@ -26,7 +26,7 @@ print_success() {
 # Change to script directory
 cd "$(dirname "$0")"
 
-# Step 1: Create the external network if it doesn't exist
+
 print_status "Creating pipeline-network..."
 if ! docker network inspect pipeline-network &> /dev/null; then
 	docker network create pipeline-network
@@ -35,7 +35,7 @@ else
 	print_status "Pipeline network already exists"
 fi
 
-# Step 2: Start Data Lake (HDFS)
+
 print_status "Starting Data Lake (HDFS)..."
 docker compose -f ./data-lake/docker-compose.yml up -d
 if [ $? -eq 0 ]; then
@@ -46,7 +46,7 @@ else
 fi
 print_status "Waiting for HDFS to stabilize..."
 
-# Step 3: Start Stream Cluster (Kafka)
+
 print_status "Starting Stream Cluster (Kafka)..."
 docker compose -f ./stream-cluster/docker-compose.yml up -d
 if [ $? -eq 0 ]; then
@@ -57,7 +57,7 @@ else
 fi
 print_status "Waiting for Kafka brokers to be ready..."
 
-# Step 4: Start Curated Layer
+
 print_status "Starting Curated Layer..."
 docker compose -f ./curated/docker-compose.yml up -d
 if [ $? -eq 0 ]; then
@@ -67,19 +67,9 @@ else
 	exit 1
 fi
 
-# Step 5: Start Producer
-print_status "Starting Flight Data Producer..."
-docker compose -f ./producer/docker-compose.yml up -d
-if [ $? -eq 0 ]; then
-	print_success "Producer started"
-else
-	print_error "Failed to start Producer"
-	exit 1
-fi
 
-# Step 6: Start Stream Processing
 print_status "Starting Stream Processing..."
-docker compose -f ./stream-processing/docker-compose.yml up -d
+docker compose -f ./stream-processing/docker-compose.yml up --build -d
 if [ $? -eq 0 ]; then
 	print_success "Stream Processing started"
 else
@@ -87,7 +77,17 @@ else
 	exit 1
 fi
 
-# Step 7: Start Batch Processing
+
+# print_status "Starting Flight Data Producer..."
+# docker compose -f ./producer/docker-compose.yml up -d
+# if [ $? -eq 0 ]; then
+# 	print_success "Producer started"
+# else
+# 	print_error "Failed to start Producer"
+# 	exit 1
+# fi
+
+
 print_status "Starting Batch Processing..."
 docker compose -f ./batch-processing/docker-compose.yml up -d
 if [ $? -eq 0 ]; then
@@ -97,7 +97,7 @@ else
 	exit 1
 fi
 
-# Step 8: Start Orchestration (Airflow) - using up.sh
+
 print_status "Starting Orchestration (Airflow)..."
 cd orchestration
 bash up.sh
@@ -108,7 +108,7 @@ else
 fi
 cd ..
 
-# Step 9: Start Dashboard (Metabase) - using up.sh
+
 print_status "Starting Dashboard (Metabase)..."
 cd dashboard
 bash up.sh
@@ -119,7 +119,7 @@ else
 fi
 cd ..
 
-# Final status
+
 echo ""
 echo -e "${GREEN}======================================${NC}"
 echo -e "${GREEN}Cluster Startup Complete!${NC}"
