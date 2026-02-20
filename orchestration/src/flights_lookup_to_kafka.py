@@ -14,7 +14,7 @@ from confluent_kafka import Producer
 
 FLIGHTS_LOOKUP_TOPIC = os.environ.get("FLIGHTS_LOOKUP_TOPIC")
 KAFKA_BOOTSTRAP_SERVERS = os.environ.get("KAFKA_BOOTSTRAP_SERVERS")
-AIRCRAFT_DB_PATH = os.environ.get("AIRCRAFT_DB_PATH", "/data/metadata/AircraftDatabase.csv")
+AIRCRAFT_DB_PATH = os.environ.get("AIRCRAFT_DB_PATH")
 
 def run_aggregation(spark: SparkSession, normalize_delay: bool = True, min_flights: int = 0):
 	"""

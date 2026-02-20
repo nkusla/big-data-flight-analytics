@@ -15,8 +15,8 @@ from airflow.providers.apache.hdfs.hooks.webhdfs import WebHDFSHook
 from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
 
 @dag(
-	dag_id='process_flight_data',
-	description='Process flight data from HDFS and save OTP metrics to MongoDB',
+	dag_id='batch_process_flights_data',
+	description='Process flights data from HDFS and save OTP metrics to MongoDB',
 	start_date=datetime(2026, 1, 27),
 	max_active_runs=1,
 	catchup=False,
@@ -31,9 +31,9 @@ from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOpe
 		'execution_timeout': timedelta(minutes=30),
 	},
 )
-def process_flight_data():
+def batch_process_flights_data():
 	"""
-	Process flight data pipeline:
+	Process flights data pipeline:
 	1. Upload CSV files to HDFS
 	2. Run Spark job to calculate OTP metrics
 	3. Store results in MongoDB
@@ -69,10 +69,10 @@ def process_flight_data():
 		except Exception:
 			print(f"✗ Failed to create HDFS directory: {hdfs_data_dir}")
 
-	process_data = SparkSubmitOperator(
-		task_id='process_flight_data',
-		application='/opt/airflow/src/process.py',
-		name='process_flight_data',
+	batch_process_data = SparkSubmitOperator(
+		task_id='batch_process_flights_data',
+		application='/opt/airflow/src/batch_process.py',
+		name='batch_process_flights_data',
 		conn_id='SPARK_CONNECTION',
 		conf={
 			'spark.hadoop.fs.defaultFS': 'hdfs://hdfs-namenode:9000',
@@ -86,7 +86,7 @@ def process_flight_data():
 		verbose=True,
 	)
 
-	check_transformed_data() >> process_data
+	check_transformed_data() >> batch_process_data
 
 
-process_flight_data()
+batch_process_flights_data()

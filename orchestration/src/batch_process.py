@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Process data from HDFS and save to MongoDB."""
 
-from pyspark.sql import SparkSession
+from pyspark.sql import SparkSession, Window
 import pyspark.sql.functions as F
 from pyspark.sql.types import *
 from pyspark.ml.feature import Bucketizer
@@ -25,7 +25,7 @@ def calculate_airline_stats(spark: SparkSession, df: DataFrame):
 	.drop("FlightCount", "DelayedFlightCount") \
 	.orderBy(F.col("OnTimePerformance").desc())
 
-	airline_stats = join_with_airlines(spark, airline_stats)
+	airline_stats = join_with_airlines_metadata(spark, airline_stats)
 
 	save_to_mongodb(airline_stats, mongo_collection)
 
@@ -44,6 +44,8 @@ def calculate_airport_departure_delays(spark: SparkSession, df: DataFrame):
 	airport_departure_delays_result = airport_departure_delays_result \
 		.withColumnRenamed("Origin", "AirportCode")
 
+	airport_departure_delays_result = join_with_airports_metadata(spark, airport_departure_delays_result)
+
 	save_to_mongodb(airport_departure_delays_result, mongo_collection)
 
 def calculate_busiest_airports(spark: SparkSession, df: DataFrame):
@@ -52,10 +54,33 @@ def calculate_busiest_airports(spark: SparkSession, df: DataFrame):
 	mongo_collection = "busiest_airports"
 	busiest_airports_result = df.groupBy("Origin", "OriginCityName", "OriginStateName") \
 		.agg(F.count(F.col("Origin")).alias("FlightCount")) \
-		.orderBy(F.col("FlightCount").desc())
+		.orderBy(F.col("FlightCount").desc()) \
+		.withColumnRenamed("Origin", "AirportCode") \
+		.withColumnRenamed("OriginCityName", "CityName") \
+		.withColumnRenamed("OriginStateName", "StateName")
 
+	w = Window.partitionBy()
 	busiest_airports_result = busiest_airports_result \
-		.withColumnRenamed("Origin", "AirportCode")
+		.withColumn("_min", F.min("FlightCount").over(w)) \
+		.withColumn("_max", F.max("FlightCount").over(w)) \
+		.withColumn("_total", F.sum("FlightCount").over(w)) \
+		.withColumn(
+			"BusynessScorePercent",
+			F.when(F.col("_max") == F.col("_min"), 100.0).otherwise(
+				(F.col("FlightCount") - F.col("_min")) / (F.col("_max") - F.col("_min")) * 100
+			)
+		) \
+		.withColumn(
+			"ShareOfTotalFlightsPercent",
+			F.when(F.col("_total") > 0, F.col("FlightCount") / F.col("_total") * 100).otherwise(0.0)
+		) \
+		.drop("_min", "_max", "_total") \
+
+	busiest_airports_result = join_with_airports_metadata(spark, busiest_airports_result)
+
+	busiest_airports_result.write \
+		.mode("overwrite") \
+		.parquet("/data/curated/busiest_airports.parquet")
 
 	save_to_mongodb(busiest_airports_result, mongo_collection)
 
