@@ -13,10 +13,10 @@ from opensky_api import OpenSkyApi
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
 class FlightDataProducer:
-	def __init__(self, bootstrap_servers='localhost:29092', topic='flight-data'):
+	def __init__(self, bootstrap_servers='localhost:29092', topic='flights-data'):
 		conf = {
 			'bootstrap.servers': bootstrap_servers,
-			'client.id': 'flight-data-producer',
+			'client.id': 'flights-data-producer',
 			'acks': 'all',
 			'retries': 3
 		}
@@ -157,8 +157,8 @@ def main():
 	parser = argparse.ArgumentParser(description='Flight Data Kafka Producer')
 	parser.add_argument('--bootstrap-servers', default='localhost:29092',
 						help='Kafka bootstrap servers (default: localhost:29092)')
-	parser.add_argument('--topic', default='flight-data',
-						help='Kafka topic name (default: flight-data)')
+	parser.add_argument('--topic', default='flights-data',
+						help='Kafka topic name (default: flights-data)')
 	parser.add_argument('--mode', choices=['api', 'file'], required=True,
 						help='Data source: api (OpenSky) or file')
 	parser.add_argument('--interval', type=int, default=10,

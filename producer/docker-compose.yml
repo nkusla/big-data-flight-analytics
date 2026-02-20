@@ -17,7 +17,7 @@ services:
       python producer.py
       --mode file
       --bootstrap-servers kafka-broker-1:9092,kafka-broker-2:9092
-      --topic flight-data
+      --topic flights-data
       --partition-size 20
       --interval 20
     restart: no
