@@ -1,30 +1,16 @@
 package com.flight_analytics;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.apache.kafka.common.serialization.Deserializer;
-import org.apache.kafka.common.serialization.Serde;
 import org.apache.kafka.common.serialization.Serdes;
-import org.apache.kafka.common.serialization.Serializer;
 import org.apache.kafka.streams.KafkaStreams;
 import org.apache.kafka.streams.StreamsBuilder;
 import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.kstream.GlobalKTable;
 import org.apache.kafka.streams.kstream.KStream;
-import org.apache.kafka.streams.kstream.TimeWindows;
-import org.apache.kafka.streams.kstream.Materialized;
-import org.apache.kafka.streams.kstream.Suppressed;
-import org.apache.kafka.streams.kstream.Windowed;
-import org.apache.kafka.streams.KeyValue;
 
-import java.nio.charset.StandardCharsets;
-import java.time.Duration;
-import java.util.Arrays;
-import java.util.HashSet;
 import java.util.Properties;
-import java.util.Set;
 
 public class StreamProcessor {
 
@@ -34,14 +20,6 @@ public class StreamProcessor {
 	public static final String FLIGHTS_DATA_TOPIC = "flights-data";
 	public static final String FLIGHTS_LOOKUP_TOPIC = "flights-lookup";
 	public static final String FLIGHTS_PROCESSED_TOPIC = "flights-processed";
-	public static final String AIRLINE_COUNTS_TOPIC = "airline-aircraft-counts";
-
-	/* Window size for "live" airline aircraft count (distinct icao24 per airline in this window).
-	 *  Results are emitted only when the window closes (suppression); topic stays empty until first window completes.
-	 */
-	private static final Duration AIRLINE_COUNT_WINDOW_SIZE = Duration.ofSeconds(10);
-	public static final String AIRPORTS_LOOKUP_TOPIC = "airports-lookup";
-
 
 	public static void main(String[] args) {
 		Properties props = new Properties();
@@ -52,8 +30,8 @@ public class StreamProcessor {
 
 		StreamsBuilder builder = new StreamsBuilder();
 
-		KStream<String, String> inputStream = builder.stream(FLIGHTS_DATA_TOPIC);
 		GlobalKTable<String, String> flightsLookupTable = builder.globalTable(FLIGHTS_LOOKUP_TOPIC);
+		KStream<String, String> inputStream = builder.stream(FLIGHTS_DATA_TOPIC);
 
 		KStream<String, String> transformedStream = inputStream
 				.selectKey((key, v) -> getIcao24FromStream(v))
@@ -68,29 +46,17 @@ public class StreamProcessor {
 				.filter((key, value) -> value != null)
 				.to(FLIGHTS_PROCESSED_TOPIC);
 
-		transformedStream
-				.filter((key, value) -> extractAirlineCodeFromValue(value) != null)
-				.groupBy((key, value) -> extractAirlineCodeFromValue(value))
-				.windowedBy(TimeWindows.ofSizeWithNoGrace(AIRLINE_COUNT_WINDOW_SIZE))
-				.aggregate(
-						HashSet::new,
-						(key, value, icao24Set) -> {
-							String icao24 = getIcao24FromStream(value);
-							if (icao24 != null) icao24Set.add(icao24);
-							return icao24Set;
-						},
-						Materialized.with(Serdes.String(), setSerde())
-				)
-				.suppress(Suppressed.untilWindowCloses(Suppressed.BufferConfig.unbounded()))
-				.toStream()
-				.mapValues(Set::size)
-				.map(StreamProcessor::airlineCountToKeyValue)
-				.to(AIRLINE_COUNTS_TOPIC);
+		AirlineAircraftCountStream.addTo(builder, transformedStream);
+		AirportAircraftCountStream.addTo(builder, transformedStream);
 
 		KafkaStreams streams = new KafkaStreams(builder.build(), props);
 		Runtime.getRuntime().addShutdownHook(new Thread(streams::close));
 
-		System.out.println("Starting Kafka Streams: (" + FLIGHTS_DATA_TOPIC + " + " + FLIGHTS_LOOKUP_TOPIC + ") -> processing -> " + FLIGHTS_PROCESSED_TOPIC);
+		System.out.println("\nStarting Kafka Streams: ");
+		System.out.println("\tUsing lookup topics: " + FLIGHTS_LOOKUP_TOPIC + " and " + AirportAircraftCountStream.AIRPORTS_LOOKUP_TOPIC);
+		System.out.println("\t" + FLIGHTS_DATA_TOPIC + " -> " + FLIGHTS_PROCESSED_TOPIC + ", " + AirlineAircraftCountStream.OUTPUT_TOPIC + ", " + AirportAircraftCountStream.OUTPUT_TOPIC);
+		System.out.println();
+
 		streams.start();
 	}
 
@@ -158,76 +124,4 @@ public class StreamProcessor {
 		}
 	}
 
-	public static String extractAirlineCode(String callsign) {
-		if (callsign == null || callsign.isBlank())
-			return "UNKNOWN";
-
-		String cs = callsign.trim().toUpperCase();
-
-		// First three letters determine airline code
-		// callsign starting with N are treated as private flights
-		if (cs.isEmpty())
-			return "UNKNOWN";
-		if (cs.charAt(0) == 'N')
-			return "PRIVATE";
-		if (cs.length() < 3)
-			return cs;
-
-		return cs.substring(0, 3);
-	}
-
-	public static String extractAirlineCodeFromValue(String jsonValue) {
-		if (jsonValue == null || jsonValue.isBlank())
-			return null;
-
-		try {
-			JsonNode root = MAPPER.readTree(jsonValue);
-			JsonNode callsign = root.path("callsign");
-
-			if (callsign.isMissingNode() || callsign.isNull())
-				return null;
-
-			String cs = callsign.asText(null);
-			return cs != null ? extractAirlineCode(cs) : null;
-
-		} catch (Exception e) {
-			return null;
-		}
-	}
-
-	private static KeyValue<String, String> airlineCountToKeyValue(Windowed<String> windowedKey, Integer count) {
-		String airline = windowedKey.key();
-		long windowEndMs = windowedKey.window().end();
-		ObjectNode obj = MAPPER.createObjectNode();
-
-		obj.put("_id", airline);
-		obj.put("airline", airline);
-		obj.put("aircraft_count", count);
-		obj.put("window_end_ms", windowEndMs);
-
-		try {
-			String value = MAPPER.writeValueAsString(obj);
-			return KeyValue.pair(airline, value);
-		} catch (JsonProcessingException e) {
-			throw new RuntimeException("Failed to serialize airline count", e);
-		}
-	}
-
-	private static Serde<Set<String>> setSerde() {
-		Serializer<Set<String>> ser = (topic, set) ->
-				(set == null ? "" : String.join(",", set)).getBytes(StandardCharsets.UTF_8);
-
-		Deserializer<Set<String>> des = (topic, bytes) -> {
-			if (bytes == null || bytes.length == 0)
-				return new HashSet<>();
-
-			String s = new String(bytes, StandardCharsets.UTF_8);
-			if (s.isEmpty())
-				return new HashSet<>();
-
-			return new HashSet<>(Arrays.asList(s.split(",", -1)));
-		};
-
-		return Serdes.serdeFrom(ser, des);
-	}
 }

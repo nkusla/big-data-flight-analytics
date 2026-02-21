@@ -3,7 +3,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: stream-processor
+    deploy:
+      replicas: 2
     hostname: stream-processor
     networks:
       - pipeline-network
