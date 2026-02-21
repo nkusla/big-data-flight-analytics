@@ -2,7 +2,7 @@
 """
 Script to read busiest airports from curated parquet and write to Kafka (e.g. for Global KTable).
 
-Reads /data/curated/busiest_airports.parquet (written by process.calculate_busiest_airports).
+Reads /data/curated/airports_lookup.parquet (written by process.calculate_airports_lookup).
 Refreshes the topic (delete + recreate) before writing so the Global KTable sees only the current snapshot.
 """
 
@@ -14,7 +14,7 @@ from confluent_kafka import Producer
 
 AIRPORTS_LOOKUP_TOPIC = os.environ.get("AIRPORTS_LOOKUP_TOPIC")
 KAFKA_BOOTSTRAP_SERVERS = os.environ.get("KAFKA_BOOTSTRAP_SERVERS")
-BUSIEST_AIRPORTS_PARQUET = "/data/curated/busiest_airports.parquet"
+BUSIEST_AIRPORTS_PARQUET = "/data/curated/airports_lookup.parquet"
 
 
 def send_to_kafka(rows, topic: str, bootstrap_servers: str):

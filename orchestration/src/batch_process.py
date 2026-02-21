@@ -84,9 +84,11 @@ def calculate_busiest_airports(spark: SparkSession, df: DataFrame):
 
 	top_10_busiest_airports_result = busiest_airports_result.limit(10)
 
+
 	top_10_busiest_airports_result.write \
 		.mode("overwrite") \
-		.parquet("/data/curated/busiest_airports.parquet")
+		.parquet("/data/curated/airports_lookup.parquet")
+	print(f"✓ Generated and saved busiest airports to HDFS at /data/curated/airports_lookup.parquet")
 
 	save_to_mongodb(busiest_airports_result, mongo_collection)
 
