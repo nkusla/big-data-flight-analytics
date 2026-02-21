@@ -19,7 +19,7 @@ services:
       --bootstrap-servers kafka-broker-1:9092,kafka-broker-2:9092
       --topic flights-data
       --partition-size 20
-      --interval 20
+      --interval 30
     restart: no
 
 networks:

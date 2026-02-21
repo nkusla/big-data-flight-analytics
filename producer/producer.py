@@ -54,17 +54,8 @@ class FlightDataProducer:
 			return False
 
 	def produce_from_opensky(self, interval=10, bbox=None):
-
-		username = os.environ.get("OPENSKY_USERNAME") or None
-		password = os.environ.get("OPENSKY_PASSWORD") or None
-		api = None
-		if username is None or password is None:
-			print("No OpenSky credentials found in environment variables")
-			api = OpenSkyApi()
-		else:
-			api = OpenSkyApi(username=username, password=password)
-
 		print(f"Starting OpenSky producer (interval: {interval}s)")
+		api = OpenSkyApi()
 
 		if bbox:
 			print(f"Using bounding box (min_lat, max_lat, min_lon, max_lon): {bbox}")
@@ -92,7 +83,6 @@ class FlightDataProducer:
 								'on_ground': state.on_ground,
 								'baro_altitude': state.baro_altitude
 							}
-							self.dump_to_disk(flight_data)
 							self.send_to_kafka(flight_data)
 					else:
 						print("No states received (Rate limit exceeded)")
