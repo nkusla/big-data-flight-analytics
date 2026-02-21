@@ -35,6 +35,7 @@ def join_with_airports_metadata(spark: SparkSession, df: DataFrame):
 	airports_df = spark.read.csv(AIRPORTS_DB_PATH, header=True, inferSchema=True)
 	airports_df = airports_df.select("iata", "latitude", "longitude", "name")
 	joined = df.join(airports_df, df.AirportCode == airports_df.iata, "left")
+	joined = joined.withColumnRenamed("name", "AirportName")
 	return joined.drop(airports_df.iata)
 
 def save_to_mongodb(df: DataFrame, mongo_collection: str):

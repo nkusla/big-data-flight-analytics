@@ -42,79 +42,37 @@ public final class AirportAircraftCountStream {
 	private static final String AIRPORTS_STORE_NAME = "airports-store";
 	private static final ObjectMapper MAPPER = new ObjectMapper();
 
-	private AirportAircraftCountStream() {}
-
-
 	public static void addTo(StreamsBuilder builder, KStream<String, String> transformedStream) {
 		StoreBuilder<KeyValueStore<String, String>> airportsStoreBuilder = Stores.keyValueStoreBuilder(
 				Stores.persistentKeyValueStore(AIRPORTS_STORE_NAME),
 				Serdes.String(),
 				Serdes.String());
+
 		builder.addGlobalStore(
 				airportsStoreBuilder,
 				AIRPORTS_LOOKUP_TOPIC,
 				Consumed.with(Serdes.String(), Serdes.String()),
-				(ProcessorSupplier<String, String, Void, Void>) () -> new Processor<String, String, Void, Void>() {
-					KeyValueStore<String, String> store;
-
-					@Override
-					public void init(ProcessorContext<Void, Void> context) {
-						store = (KeyValueStore<String, String>) context.getStateStore(AIRPORTS_STORE_NAME);
-					}
-
-					@Override
-					public void process(Record<String, String> record) {
-						if (record.key() != null && record.value() != null)
-							store.put(record.key(), record.value());
-					}
-				});
+				(ProcessorSupplier<String, String, Void, Void>) () ->
+					new AirportsLookupStoreProcessor(AIRPORTS_STORE_NAME));
 
 		transformedStream
 				.filter((key, value) -> extractFlightPosition(value) != null)
-				.process(
-						(ProcessorSupplier<String, String, String, String>) () -> new Processor<String, String, String, String>() {
-							ProcessorContext<String, String> context;
-							KeyValueStore<String, String> store;
-
-							@Override
-							public void init(ProcessorContext<String, String> context) {
-								this.context = context;
-								this.store = (KeyValueStore<String, String>) context.getStateStore(AIRPORTS_STORE_NAME);
-							}
-
-							@Override
-							public void process(Record<String, String> record) {
-								FlightPosition pos = extractFlightPosition(record.value());
-								if (pos == null || store == null) return;
-								String icao24 = pos.icao24;
-								long ts = record.timestamp();
-								try (KeyValueIterator<String, String> it = store.all()) {
-									while (it.hasNext()) {
-										KeyValue<String, String> e = it.next();
-										String airportCode = e.key;
-										String airportJson = e.value;
-										if (airportJson == null) continue;
-										Double lat = getDoubleFromJson(airportJson, "latitude");
-										Double lon = getDoubleFromJson(airportJson, "longitude");
-										if (lat != null && lon != null && haversineKm(pos.lat, pos.lon, lat, lon) <= RADIUS_KM)
-											context.forward(new Record<>(airportCode, icao24, ts));
-									}
-								}
-							}
-						})
+				.process((ProcessorSupplier<String, String, String, String>) () ->
+						new FlightToAirportMatcherProcessor(AIRPORTS_STORE_NAME, RADIUS_KM))
 				.groupByKey()
 				.windowedBy(TimeWindows.ofSizeWithNoGrace(WINDOW_SIZE))
 				.aggregate(
 						HashSet::new,
 						(airportCode, icao24, set) -> {
 							if (icao24 != null) set.add(icao24);
-							return set;
+								return set;
 						},
 						Materialized.with(Serdes.String(), setSerde())
 				)
 				.suppress(Suppressed.untilWindowCloses(Suppressed.BufferConfig.unbounded()))
 				.toStream()
-				.map(AirportAircraftCountStream::airportCountToKeyValue)
+				.process((ProcessorSupplier<Windowed<String>, Set<String>, String, String>) () ->
+						new EnrichWithAirportMetadataProcessor(AIRPORTS_STORE_NAME))
 				.to(OUTPUT_TOPIC);
 	}
 
@@ -141,6 +99,17 @@ public final class AirportAircraftCountStream {
 		}
 	}
 
+	private static String getStringFromJson(String json, String field) {
+		if (json == null || field == null)
+			return null;
+		try {
+			JsonNode node = MAPPER.readTree(json).get(field);
+			return (node != null && !node.isNull() && node.isTextual()) ? node.asText() : null;
+		} catch (Exception e) {
+			return null;
+		}
+	}
+
 	private static final class FlightPosition {
 		final String icao24;
 		final double lat;
@@ -150,21 +119,6 @@ public final class AirportAircraftCountStream {
 			this.icao24 = icao24;
 			this.lat = lat;
 			this.lon = lon;
-		}
-	}
-
-	private static FlightPosition extractFlightPosition(String streamValue) {
-		if (streamValue == null || streamValue.isBlank()) return null;
-		try {
-			JsonNode root = MAPPER.readTree(streamValue);
-			if (!root.isObject()) return null;
-			String icao24 = extractIcao24(streamValue);
-			Double lat = getDoubleFromJson(streamValue, "latitude");
-			Double lon = getDoubleFromJson(streamValue, "longitude");
-			if (icao24 == null || lat == null || lon == null) return null;
-			return new FlightPosition(icao24, lat.doubleValue(), lon.doubleValue());
-		} catch (Exception e) {
-			return null;
 		}
 	}
 
@@ -189,22 +143,6 @@ public final class AirportAircraftCountStream {
 		}
 	}
 
-	private static KeyValue<String, String> airportCountToKeyValue(Windowed<String> windowedKey, Set<String> icao24Set) {
-		String airportCode = windowedKey.key();
-		int count = icao24Set != null ? icao24Set.size() : 0;
-		long windowEndMs = windowedKey.window().end();
-		ObjectNode obj = MAPPER.createObjectNode();
-		obj.put("_id", airportCode);
-		obj.put("AirportCode", airportCode);
-		obj.put("aircraft_count", count);
-		obj.put("window_end_ms", windowEndMs);
-		try {
-			return KeyValue.pair(airportCode, MAPPER.writeValueAsString(obj));
-		} catch (JsonProcessingException e) {
-			throw new RuntimeException("Failed to serialize airport count", e);
-		}
-	}
-
 	private static Serde<Set<String>> setSerde() {
 		Serializer<Set<String>> ser = (topic, set) ->
 				(set == null ? "" : String.join(",", set)).getBytes(StandardCharsets.UTF_8);
@@ -215,5 +153,135 @@ public final class AirportAircraftCountStream {
 			return new HashSet<>(Arrays.asList(s.split(",", -1)));
 		};
 		return Serdes.serdeFrom(ser, des);
+	}
+
+	/* ***********************************************************************************************
+	 * Helper classes
+	 *********************************************************************************************** */
+
+	private static FlightPosition extractFlightPosition(String streamValue) {
+		if (streamValue == null || streamValue.isBlank()) return null;
+		try {
+			JsonNode root = MAPPER.readTree(streamValue);
+			if (!root.isObject()) return null;
+			String icao24 = extractIcao24(streamValue);
+			Double lat = getDoubleFromJson(streamValue, "latitude");
+			Double lon = getDoubleFromJson(streamValue, "longitude");
+			if (icao24 == null || lat == null || lon == null) return null;
+			return new FlightPosition(icao24, lat.doubleValue(), lon.doubleValue());
+		} catch (Exception e) {
+			return null;
+		}
+	}
+
+	/* ***********************************************************************************************
+	 * Processors
+	 *********************************************************************************************** */
+
+	private static final class AirportsLookupStoreProcessor implements Processor<String, String, Void, Void> {
+		private final String storeName;
+		private KeyValueStore<String, String> store;
+
+		AirportsLookupStoreProcessor(String storeName) {
+			this.storeName = storeName;
+		}
+
+		@Override
+		public void init(ProcessorContext<Void, Void> context) {
+			store = (KeyValueStore<String, String>) context.getStateStore(storeName);
+		}
+
+		@Override
+		public void process(Record<String, String> record) {
+			if (record.key() != null && record.value() != null)
+				store.put(record.key(), record.value());
+		}
+	}
+
+	private static final class FlightToAirportMatcherProcessor implements Processor<String, String, String, String> {
+		private final String storeName;
+		private final double radiusKm;
+		private ProcessorContext<String, String> context;
+		private KeyValueStore<String, String> store;
+
+		FlightToAirportMatcherProcessor(String storeName, double radiusKm) {
+			this.storeName = storeName;
+			this.radiusKm = radiusKm;
+		}
+
+		@Override
+		public void init(ProcessorContext<String, String> context) {
+			this.context = context;
+			this.store = (KeyValueStore<String, String>) context.getStateStore(storeName);
+		}
+
+		@Override
+		public void process(Record<String, String> record) {
+			FlightPosition pos = extractFlightPosition(record.value());
+			if (pos == null || store == null) return;
+			String icao24 = pos.icao24;
+			long ts = record.timestamp();
+			try (KeyValueIterator<String, String> it = store.all()) {
+				while (it.hasNext()) {
+					KeyValue<String, String> e = it.next();
+					String airportCode = e.key;
+					String airportJson = e.value;
+					if (airportJson == null) continue;
+					Double lat = getDoubleFromJson(airportJson, "latitude");
+					Double lon = getDoubleFromJson(airportJson, "longitude");
+					if (lat != null && lon != null && haversineKm(pos.lat, pos.lon, lat, lon) <= radiusKm)
+						context.forward(new Record<>(airportCode, icao24, ts));
+				}
+			}
+		}
+	}
+
+	private static final class EnrichWithAirportMetadataProcessor implements Processor<Windowed<String>, Set<String>, String, String> {
+		private final String storeName;
+		private ProcessorContext<String, String> context;
+		private KeyValueStore<String, String> store;
+
+		EnrichWithAirportMetadataProcessor(String storeName) {
+			this.storeName = storeName;
+		}
+
+		@Override
+		public void init(ProcessorContext<String, String> context) {
+			this.context = context;
+			store = (KeyValueStore<String, String>) context.getStateStore(storeName);
+		}
+
+		@Override
+		public void process(Record<Windowed<String>, Set<String>> record) {
+			String airportCode = record.key().key();
+			int count = record.value() != null ? record.value().size() : 0;
+			long windowEndMs = record.key().window().end();
+
+			ObjectNode obj = MAPPER.createObjectNode();
+			obj.put("_id", airportCode);
+			obj.put("AirportCode", airportCode);
+			obj.put("aircraft_count", count);
+			obj.put("window_end_ms", windowEndMs);
+			String airportJson = store != null ? store.get(airportCode) : null;
+
+			if (airportJson != null) {
+				String airportName = getStringFromJson(airportJson, "AirportName");
+				String cityName = getStringFromJson(airportJson, "CityName");
+				String stateName = getStringFromJson(airportJson, "StateName");
+
+				if (airportName != null)
+					obj.put("AirportName", airportName);
+				if (cityName != null)
+					obj.put("CityName", cityName);
+				if (stateName != null)
+					obj.put("StateName", stateName);
+			}
+
+			try {
+				context.forward(new Record<>(airportCode, MAPPER.writeValueAsString(obj), record.timestamp()));
+			} catch (JsonProcessingException e) {
+				throw new RuntimeException("Failed to serialize airport count", e);
+			}
+		}
 	}
 }

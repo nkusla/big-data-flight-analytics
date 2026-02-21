@@ -189,7 +189,7 @@ def calculate_problematic_routes(spark: SparkSession, df: DataFrame):
 	).collect()[0]
 	overall_delay_pct = (total_agg["_delayed"] / total_agg["_total"] * 100) if total_agg["_total"] > 0 else 0.0
 
-	route_stats = df.groupBy(F.col("Origin").alias("OriginCode"), F.col("Dest").alias("DestCode")).agg(
+	route_stats = df.groupBy(F.col("Origin").alias("OriginCode"), F.col("Dest").alias("DestCode"), F.col("OriginCityName"), F.col("DestCityName")).agg(
 		F.count("*").alias("FlightCount"),
 		F.count(F.when(F.col("ArrDelayMinutes") > DELAY_THRESHOLD, 1)).alias("DelayedFlightCount"),
 	).filter(F.col("FlightCount") > MIN_FLIGHTS_THRESHOLD)
@@ -203,7 +203,7 @@ def calculate_problematic_routes(spark: SparkSession, df: DataFrame):
 		) \
 		.filter(F.col("ProblematicScore") >= 1.2) \
 		.orderBy(F.col("ProblematicScore").desc()) \
-		.select("Route", "OriginCode", "DestCode", "FlightCount", "ProblematicScore")
+		.select("Route", "OriginCode", "DestCode", "OriginCityName", "DestCityName", "FlightCount", "ProblematicScore")
 
 	save_to_mongodb(problematic, mongo_collection)
 
