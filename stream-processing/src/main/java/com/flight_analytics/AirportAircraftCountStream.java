@@ -38,7 +38,7 @@ public final class AirportAircraftCountStream {
 
 	public static final double RADIUS_KM = 50.0;
 
-	private static final Duration WINDOW_SIZE = Duration.ofMinutes(2);
+	private static final Duration WINDOW_SIZE = Duration.ofMinutes(1);
 	private static final String AIRPORTS_STORE_NAME = "airports-store";
 	private static final ObjectMapper MAPPER = new ObjectMapper();
 

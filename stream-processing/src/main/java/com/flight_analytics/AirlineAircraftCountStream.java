@@ -26,7 +26,7 @@ public final class AirlineAircraftCountStream {
 
 	public static final String OUTPUT_TOPIC = "airline-aircraft-counts";
 
-	private static final Duration WINDOW_SIZE = Duration.ofSeconds(10);
+	private static final Duration WINDOW_SIZE = Duration.ofMinutes(1);
 	private static final ObjectMapper MAPPER = new ObjectMapper();
 
 	private AirlineAircraftCountStream() {}

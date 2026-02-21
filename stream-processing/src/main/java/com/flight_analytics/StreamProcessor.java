@@ -18,6 +18,7 @@ public class StreamProcessor {
 	private static final ObjectMapper MAPPER = new ObjectMapper();
 
 	public static final String FLIGHTS_DATA_TOPIC = "flights-data";
+	public static final String FLIGHTS_LOOKUP_TOPIC = "flights-lookup";
 	public static final String AIRCRAFTS_LOOKUP_TOPIC = "aircrafts-lookup";
 	public static final String FLIGHTS_PROCESSED_TOPIC = "flights-processed";
 
@@ -31,6 +32,7 @@ public class StreamProcessor {
 		StreamsBuilder builder = new StreamsBuilder();
 
 		GlobalKTable<String, String> aircraftsLookupTable = builder.globalTable(AIRCRAFTS_LOOKUP_TOPIC);
+		GlobalKTable<String, String> flightsLookupTable = builder.globalTable(FLIGHTS_LOOKUP_TOPIC);
 		KStream<String, String> inputStream = builder.stream(FLIGHTS_DATA_TOPIC);
 
 		KStream<String, String> transformedStream = inputStream
@@ -43,6 +45,11 @@ public class StreamProcessor {
 					(streamKey, streamValue) -> streamKey,
 					StreamProcessor::joinWithAircraftsLookup
 				)
+				.leftJoin(
+					flightsLookupTable,
+					(streamKey, streamValue) -> getCallsignFromStream(streamValue),
+					StreamProcessor::joinWithFlightsLookup
+				)
 				.filter((key, value) -> value != null)
 				.to(FLIGHTS_PROCESSED_TOPIC);
 
@@ -53,7 +60,7 @@ public class StreamProcessor {
 		Runtime.getRuntime().addShutdownHook(new Thread(streams::close));
 
 		System.out.println("\nStarting Kafka Streams: ");
-		System.out.println("\tUsing lookup topics: " + AIRCRAFTS_LOOKUP_TOPIC + " and " + AirportAircraftCountStream.AIRPORTS_LOOKUP_TOPIC);
+		System.out.println("\tUsing lookup topics: " + AIRCRAFTS_LOOKUP_TOPIC + ", " + FLIGHTS_LOOKUP_TOPIC + ", " + AirportAircraftCountStream.AIRPORTS_LOOKUP_TOPIC);
 		System.out.println("\t" + FLIGHTS_DATA_TOPIC + " -> " + FLIGHTS_PROCESSED_TOPIC + ", " + AirlineAircraftCountStream.OUTPUT_TOPIC + ", " + AirportAircraftCountStream.OUTPUT_TOPIC);
 		System.out.println();
 
@@ -81,6 +88,23 @@ public class StreamProcessor {
 			return null;
 		} catch (Exception e) {
 
+			return null;
+		}
+	}
+
+	private static String getCallsignFromStream(String streamValue) {
+		if (streamValue == null || streamValue.isBlank())
+			return null;
+		try {
+			JsonNode root = MAPPER.readTree(streamValue);
+			if (!root.isObject())
+				return null;
+			JsonNode callsign = root.get("callsign");
+			if (callsign == null || callsign.isNull())
+				return null;
+			String s = callsign.asText(null);
+			return (s != null && !s.isBlank()) ? s.trim() : null;
+		} catch (Exception e) {
 			return null;
 		}
 	}
@@ -120,6 +144,40 @@ public class StreamProcessor {
 
 		} catch (Exception e) {
 			System.err.println("Join FAILED: " + e.getMessage());
+			return streamValue;
+		}
+	}
+
+	private static String joinWithFlightsLookup(String streamValue, String lookupValue) {
+		if (streamValue == null || streamValue.isBlank())
+			return null;
+		try {
+			JsonNode root = MAPPER.readTree(streamValue);
+			if (!root.isObject())
+				return streamValue;
+			ObjectNode obj = (ObjectNode) root;
+			if (lookupValue != null && !lookupValue.isBlank()) {
+				JsonNode lookup = MAPPER.readTree(lookupValue);
+				if (lookup.isObject()) {
+
+					System.out.println("Join by callsign: " + lookup.get("callsign").asText());
+
+					if (lookup.has("callsign") && !lookup.get("callsign").isNull())
+						obj.put("callsign", lookup.get("callsign").asText());
+
+					if (lookup.has("AirlineName") && !lookup.get("AirlineName").isNull())
+						obj.put("AirlineName", lookup.get("AirlineName").asText());
+
+					if (lookup.has("CRSArrTime") && !lookup.get("CRSArrTime").isNull())
+						obj.put("CRSArrTime", lookup.get("CRSArrTime").asText());
+
+					if (lookup.has("CRSDepTime") && !lookup.get("CRSDepTime").isNull())
+						obj.put("CRSDepTime", lookup.get("CRSDepTime").asText());
+				}
+			}
+			return MAPPER.writeValueAsString(obj);
+		} catch (Exception e) {
+			System.err.println("Flights lookup join FAILED: " + e.getMessage());
 			return streamValue;
 		}
 	}
