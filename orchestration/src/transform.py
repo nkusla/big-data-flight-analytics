@@ -34,6 +34,11 @@ COLUMNS_TO_KEEP = [
 	"NASDelay",
 	"SecurityDelay",
 	"LateAircraftDelay",
+	"Div1Airport",
+	"Div2Airport",
+	"Div3Airport",
+	"Div4Airport",
+	"Div5Airport",
 ]
 
 def main():

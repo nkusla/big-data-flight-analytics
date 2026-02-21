@@ -18,6 +18,7 @@ def calculate_airline_stats(spark: SparkSession, df: DataFrame):
 		F.count("*").alias("FlightCount"),
 		F.count(F.when(F.col("ArrDelayMinutes") > DELAY_THRESHOLD, 1)).alias("DelayedFlightCount"),
 	) \
+	.filter(F.col("FlightCount") > MIN_FLIGHTS_THRESHOLD) \
 	.withColumn(
 		"OnTimePerformance",
 		(1.0 - (F.col("DelayedFlightCount") / F.col("FlightCount"))) * 100
@@ -38,6 +39,7 @@ def calculate_airport_departure_delays(spark: SparkSession, df: DataFrame):
 			F.avg(F.col("DepDelayMinutes")).alias("AvgDepDelayMinutes"),
 			F.count("*").alias("FlightCount")
 		) \
+	.filter(F.col("FlightCount") > MIN_FLIGHTS_THRESHOLD) \
 	.drop("FlightCount") \
 	.orderBy(F.col("AvgDepDelayMinutes").desc())
 
@@ -54,6 +56,7 @@ def calculate_busiest_airports(spark: SparkSession, df: DataFrame):
 	mongo_collection = "busiest_airports"
 	busiest_airports_result = df.groupBy("Origin", "OriginCityName", "OriginStateName") \
 		.agg(F.count(F.col("Origin")).alias("FlightCount")) \
+		.filter(F.col("FlightCount") > MIN_FLIGHTS_THRESHOLD) \
 		.orderBy(F.col("FlightCount").desc()) \
 		.withColumnRenamed("Origin", "AirportCode") \
 		.withColumnRenamed("OriginCityName", "CityName") \
@@ -102,6 +105,7 @@ def calculate_busiest_weeks(spark: SparkSession, df: DataFrame):
 			"DelayedFlightPercent",
 			F.when(F.col("FlightCount") > 0, F.col("DelayedFlightCount") / F.col("FlightCount") * 100).otherwise(None)
 		) \
+		.filter(F.col("FlightCount") > MIN_FLIGHTS_THRESHOLD) \
 		.orderBy(F.col("FlightCount").desc())
 
 	save_to_mongodb(busiest_weeks_result, mongo_collection)
@@ -138,6 +142,7 @@ def calculate_days_with_cancellations(spark: SparkSession, df: DataFrame):
 		.agg(
 			F.count("*").alias("FlightCount"),
 			F.count(F.when(F.col("Cancelled") == 1, 1)).alias("CancellationCount")) \
+		.filter(F.col("FlightCount") > MIN_FLIGHTS_THRESHOLD) \
 		.withColumn(
 			"CancellationPercent",
 			F.when(F.col("FlightCount") > 0, F.col("CancellationCount") / F.col("FlightCount") * 100).otherwise(None)
@@ -166,12 +171,67 @@ def calculate_distance_delay_correlation(spark: SparkSession, df: DataFrame):
 		.agg(
 			F.count(F.when(F.col("ArrDelayMinutes") > DELAY_THRESHOLD, 1)).alias("DelayedFlightCount"),
 			F.avg("Distance").alias("AvgDistance"),
-			F.count("*").alias("FlightCount"))
+			F.count("*").alias("FlightCount")) \
+		.filter(F.col("FlightCount") > MIN_FLIGHTS_THRESHOLD) \
 		.withColumn("ProbabilityOfDelay", F.col("DelayedFlightCount") / F.col("FlightCount"))
 		.drop("DelayedFlightCount", "FlightCount")
 		.orderBy("DistanceCategory"))
 
 	save_to_mongodb(result, mongo_collection)
+
+def calculate_problematic_routes(spark: SparkSession, df: DataFrame):
+	print("Calculating problematic routes...")
+
+	mongo_collection = "problematic_routes"
+	total_agg = df.agg(
+		F.count("*").alias("_total"),
+		F.count(F.when(F.col("ArrDelayMinutes") > DELAY_THRESHOLD, 1)).alias("_delayed"),
+	).collect()[0]
+	overall_delay_pct = (total_agg["_delayed"] / total_agg["_total"] * 100) if total_agg["_total"] > 0 else 0.0
+
+	route_stats = df.groupBy(F.col("Origin").alias("OriginCode"), F.col("Dest").alias("DestCode")).agg(
+		F.count("*").alias("FlightCount"),
+		F.count(F.when(F.col("ArrDelayMinutes") > DELAY_THRESHOLD, 1)).alias("DelayedFlightCount"),
+	).filter(F.col("FlightCount") > MIN_FLIGHTS_THRESHOLD)
+
+	route_delay_pct = F.col("DelayedFlightCount") / F.col("FlightCount") * 100
+	problematic = route_stats \
+		.withColumn("Route", F.concat(F.col("OriginCode"), F.lit("-"), F.col("DestCode"))) \
+		.withColumn(
+			"ProblematicScore",
+			F.when(F.lit(overall_delay_pct) > 0, route_delay_pct / F.lit(overall_delay_pct)).otherwise(F.lit(1.0))
+		) \
+		.filter(F.col("ProblematicScore") >= 1.2) \
+		.orderBy(F.col("ProblematicScore").desc()) \
+		.select("Route", "OriginCode", "DestCode", "FlightCount", "ProblematicScore")
+
+	save_to_mongodb(problematic, mongo_collection)
+
+def calculate_diverted_flights_by_airport(spark: SparkSession, df: DataFrame):
+	print("Calculating diverted flights by airport...")
+
+	mongo_collection = "diverted_flights_by_airport"
+	div_cols = ["Div1Airport", "Div2Airport", "Div3Airport", "Div4Airport", "Div5Airport"]
+
+	diverted = df.filter(F.col("Diverted") == 1)
+	stack_expr = ", ".join(
+		f"'{c}', {c}" for c in div_cols
+	)
+	unpivoted = diverted.select(
+		F.expr(f"stack(5, {stack_expr}) as (_, AirportCode)")
+	).select("AirportCode")
+
+	diverted_counts = (
+		unpivoted
+		.filter(F.col("AirportCode").isNotNull() & (F.trim(F.col("AirportCode")) != ""))
+		.groupBy("AirportCode")
+		.agg(F.count("*").alias("DivertedFlightCount"))
+		.orderBy(F.col("DivertedFlightCount").desc())
+	).filter(F.col("DivertedFlightCount") > MIN_FLIGHTS_THRESHOLD)
+
+	diverted_counts = join_with_airports_metadata(spark, diverted_counts)
+	save_to_mongodb(diverted_counts, mongo_collection)
+
 
 def main():
 	spark = None
@@ -187,6 +247,8 @@ def main():
 		calculate_delay_reasons(spark, df)
 		calculate_days_with_cancellations(spark, df)
 		calculate_distance_delay_correlation(spark, df)
+		calculate_problematic_routes(spark, df)
+		calculate_diverted_flights_by_airport(spark, df)
 	except Exception as e:
 		print(f"✗ Failed to process data: {e}")
 	finally:
