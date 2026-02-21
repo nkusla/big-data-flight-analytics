@@ -27,9 +27,9 @@ def build_spark_session(app_name: str):
 
 def join_with_airlines_metadata(spark: SparkSession, df: DataFrame):
 	airlines_df = spark.read.csv(AIRLINES_DB_PATH, header=True, inferSchema=True)
-	airlines_df = airlines_df.select("Code", col("Description").alias("AirlineName"))
-	joined = df.join(airlines_df, df.AirlineCode == airlines_df.Code, "left")
-	return joined.drop(airlines_df.Code)
+	airlines_df = airlines_df.select("IATA", col("Name").alias("AirlineName"))
+	joined = df.join(airlines_df, df.AirlineCode == airlines_df.IATA, "left")
+	return joined.drop(airlines_df.IATA)
 
 def join_with_airports_metadata(spark: SparkSession, df: DataFrame):
 	airports_df = spark.read.csv(AIRPORTS_DB_PATH, header=True, inferSchema=True)

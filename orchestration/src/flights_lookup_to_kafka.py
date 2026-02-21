@@ -3,47 +3,54 @@
 import json
 import os
 from pyspark.sql import SparkSession
+from pyspark.sql import Window
 import pyspark.sql.functions as F
-from shared import build_spark_session, refresh_topic
+from shared import build_spark_session, refresh_topic, AIRLINES_DB_PATH
 from confluent_kafka import Producer
 
 FLIGHTS_LOOKUP_TOPIC = os.environ.get("FLIGHTS_LOOKUP_TOPIC")
 KAFKA_BOOTSTRAP_SERVERS = os.environ.get("KAFKA_BOOTSTRAP_SERVERS")
 
 
-def hhmm_to_minutes(col_name):
-	return F.floor(F.col(col_name) / 100) * 60 + (F.col(col_name) % 100)
-
-
-def minutes_to_hhmm_str(avg_minutes_col):
-	rounded = F.round(F.col(avg_minutes_col)).cast("int")
-	hour = (rounded / 60).cast("int") % 24
-	minute = rounded % 60
-	return F.format_string("%02d:%02d", hour, minute)
+def hhmm_to_hhmm_str(col):
+	return F.format_string("%02d:%02d", F.floor(F.col(col) / 100), F.col(col) % 100)
 
 
 def run_aggregation(spark: SparkSession):
 	df = spark.read.parquet("/data/transformed/*.parquet")
-	arr_min = hhmm_to_minutes("CRSArrTime")
-	dep_min = hhmm_to_minutes("CRSDepTime")
-	agg = (
-		df.filter(F.col("Flight_Number_Operating_Airline").isNotNull())
-		.groupBy(F.col("Flight_Number_Operating_Airline"))
-		.agg(
-			F.avg(arr_min).alias("avg_arr_min"),
-			F.avg(dep_min).alias("avg_dep_min"),
-		)
+	airlines = spark.read.csv(AIRLINES_DB_PATH, header=True, inferSchema=True) \
+		.withColumnRenamed("Name", "AirlineName") \
+		.filter(F.length(F.trim(F.coalesce(F.col("ICAO"), F.lit("")))) > 0)
+
+	df = df.join(airlines, df.IATA == airlines.IATA, "inner") \
+		.withColumn("callsign", F.concat(F.col("ICAO"), F.col("Flight_Number_Operating_Airline").cast("string"))) \
+		.drop("IATA", "ICAO") \
+		.filter(F.length(F.trim(F.col("callsign"))) > 0)
+
+	arr_counts = df.groupBy("callsign", "CRSArrTime").agg(
+		F.count("*").alias("cnt"),
+		F.first("AirlineName").alias("AirlineName"),
 	)
-	result = (
-		agg.withColumn("AvgCRSArrTime", minutes_to_hhmm_str("avg_arr_min"))
-		.withColumn("AvgCRSDepTime", minutes_to_hhmm_str("avg_dep_min"))
-		.select(
-			"Flight_Number_Operating_Airline",
-			"AvgCRSArrTime",
-			"AvgCRSDepTime",
-		)
-		.orderBy("Flight_Number_Operating_Airline")
-	)
+
+	dep_counts = df.groupBy("callsign", "CRSDepTime").agg(F.count("*").alias("cnt"))
+
+	w_arr = Window.partitionBy("callsign").orderBy(F.desc("cnt"), F.asc("CRSArrTime"))
+	w_dep = Window.partitionBy("callsign").orderBy(F.desc("cnt"), F.asc("CRSDepTime"))
+
+	arr_mode = arr_counts.withColumn("rn", F.row_number().over(w_arr)) \
+		.filter(F.col("rn") == 1) \
+		.select("callsign", F.col("CRSArrTime").alias("mode_arr"), "AirlineName")
+
+	dep_mode = dep_counts.withColumn("rn", F.row_number().over(w_dep)) \
+		.filter(F.col("rn") == 1) \
+		.select("callsign", F.col("CRSDepTime").alias("mode_dep"))
+
+	result = arr_mode.join(dep_mode, "callsign") \
+		.withColumn("CRSArrTime", hhmm_to_hhmm_str("mode_arr")) \
+		.withColumn("CRSDepTime", hhmm_to_hhmm_str("mode_dep")) \
+		.select("callsign", "AirlineName", "CRSArrTime", "CRSDepTime") \
+		.orderBy("callsign")
+
 	return result
 
 
@@ -59,11 +66,12 @@ def send_to_kafka(rows, topic: str, bootstrap_servers: str):
 			print(f"Delivery failed: {err}")
 
 	for row in rows:
-		key = str(row.Flight_Number_Operating_Airline)
+		key = str(row.callsign)
 		payload = {
-			"Flight_Number_Operating_Airline": key,
-			"AvgCRSArrTime": str(row.AvgCRSArrTime) if row.AvgCRSArrTime is not None else None,
-			"AvgCRSDepTime": str(row.AvgCRSDepTime) if row.AvgCRSDepTime is not None else None,
+			"callsign": key,
+			"AirlineName": str(row.AirlineName) if row.AirlineName is not None else None,
+			"CRSArrTime": str(row.CRSArrTime) if row.CRSArrTime is not None else None,
+			"CRSDepTime": str(row.CRSDepTime) if row.CRSDepTime is not None else None,
 		}
 		value = json.dumps(payload)
 		producer.produce(topic, key=key.encode("utf-8"), value=value.encode("utf-8"), callback=delivery_callback)

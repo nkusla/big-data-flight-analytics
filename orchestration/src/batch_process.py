@@ -11,7 +11,7 @@ def calculate_airline_stats(spark: SparkSession, df: DataFrame):
 	print("Calculating airline stats...")
 
 	mongo_collection = "airline_stats"
-	airline_stats = df.groupBy(F.col("Operating_Airline").alias("AirlineCode")).agg(
+	airline_stats = df.groupBy(F.col("IATA").alias("AirlineCode")).agg(
 		F.avg(
 			F.abs(F.col("ActualElapsedTime") - F.col("CRSElapsedTime"))
 		).alias("AvgErrorMinutes"),

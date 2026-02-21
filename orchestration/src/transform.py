@@ -12,7 +12,7 @@ COLUMNS_TO_KEEP = [
 	"Month",
 	"DayOfMonth",
 	"DayOfWeek",
-	"Operating_Airline",
+	"IATA_Code_Operating_Airline",
 	"Flight_Number_Operating_Airline",
 	"Tail_Number",
 	"Distance",
@@ -62,6 +62,7 @@ def main():
 
 				(df.filter(F.col("file_year") == year)
 					.select(COLUMNS_TO_KEEP)
+					.withColumnRenamed("IATA_Code_Operating_Airline", "IATA")
 					.orderBy("FlightDate")
 					.coalesce(1)
 					.write
