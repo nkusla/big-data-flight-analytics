@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Script to calculate flights lookup data and write to Kafka for Global KTable.
+Script to calculate aircrafts lookup data and write to Kafka for Global KTable.
 
 Reads from HDFS /data/transformed/*.parquet
 Refreshes the topic (delete + recreate) before writing so the Global KTable sees only the current snapshot.
@@ -13,7 +13,7 @@ import pyspark.sql.functions as F
 from shared import build_spark_session, refresh_topic
 from confluent_kafka import Producer
 
-FLIGHTS_LOOKUP_TOPIC = os.environ.get("FLIGHTS_LOOKUP_TOPIC")
+AIRCRAFTS_LOOKUP_TOPIC = os.environ.get("AIRCRAFTS_LOOKUP_TOPIC")
 KAFKA_BOOTSTRAP_SERVERS = os.environ.get("KAFKA_BOOTSTRAP_SERVERS")
 AIRCRAFT_DB_PATH = os.environ.get("AIRCRAFT_DB_PATH")
 
@@ -63,7 +63,7 @@ def run_aggregation(spark: SparkSession, normalize_delay: bool = True, min_fligh
 def send_to_kafka(rows, topic: str, bootstrap_servers: str):
 	conf = {
 		"bootstrap.servers": bootstrap_servers,
-		"client.id": "flights-lookup-producer",
+		"client.id": "aircrafts-lookup-producer",
 	}
 	producer = Producer(conf)
 
@@ -91,14 +91,14 @@ def send_to_kafka(rows, topic: str, bootstrap_servers: str):
 def main():
 	spark = None
 	try:
-		spark = build_spark_session("Flights Lookup to Kafka Global KTable")
+		spark = build_spark_session("Aircrafts Lookup to Kafka Global KTable")
 		result_df = run_aggregation(spark)
 		rows = result_df.collect()
 		if not rows:
 			print("No rows to send (empty aggregation or no data).")
 			return
-		refresh_topic(FLIGHTS_LOOKUP_TOPIC, KAFKA_BOOTSTRAP_SERVERS)
-		send_to_kafka(rows, FLIGHTS_LOOKUP_TOPIC, KAFKA_BOOTSTRAP_SERVERS)
+		refresh_topic(AIRCRAFTS_LOOKUP_TOPIC, KAFKA_BOOTSTRAP_SERVERS)
+		send_to_kafka(rows, AIRCRAFTS_LOOKUP_TOPIC, KAFKA_BOOTSTRAP_SERVERS)
 	except Exception as e:
 		print(f"✗ Failed: {e}")
 		raise

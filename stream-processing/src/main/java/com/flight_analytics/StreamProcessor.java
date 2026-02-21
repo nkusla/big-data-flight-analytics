@@ -18,7 +18,7 @@ public class StreamProcessor {
 	private static final ObjectMapper MAPPER = new ObjectMapper();
 
 	public static final String FLIGHTS_DATA_TOPIC = "flights-data";
-	public static final String FLIGHTS_LOOKUP_TOPIC = "flights-lookup";
+	public static final String AIRCRAFTS_LOOKUP_TOPIC = "aircrafts-lookup";
 	public static final String FLIGHTS_PROCESSED_TOPIC = "flights-processed";
 
 	public static void main(String[] args) {
@@ -30,7 +30,7 @@ public class StreamProcessor {
 
 		StreamsBuilder builder = new StreamsBuilder();
 
-		GlobalKTable<String, String> flightsLookupTable = builder.globalTable(FLIGHTS_LOOKUP_TOPIC);
+		GlobalKTable<String, String> aircraftsLookupTable = builder.globalTable(AIRCRAFTS_LOOKUP_TOPIC);
 		KStream<String, String> inputStream = builder.stream(FLIGHTS_DATA_TOPIC);
 
 		KStream<String, String> transformedStream = inputStream
@@ -39,9 +39,9 @@ public class StreamProcessor {
 
 		transformedStream
 				.leftJoin(
-					flightsLookupTable,
+					aircraftsLookupTable,
 					(streamKey, streamValue) -> streamKey,
-					StreamProcessor::joinWithFlightsLookup
+					StreamProcessor::joinWithAircraftsLookup
 				)
 				.filter((key, value) -> value != null)
 				.to(FLIGHTS_PROCESSED_TOPIC);
@@ -53,7 +53,7 @@ public class StreamProcessor {
 		Runtime.getRuntime().addShutdownHook(new Thread(streams::close));
 
 		System.out.println("\nStarting Kafka Streams: ");
-		System.out.println("\tUsing lookup topics: " + FLIGHTS_LOOKUP_TOPIC + " and " + AirportAircraftCountStream.AIRPORTS_LOOKUP_TOPIC);
+		System.out.println("\tUsing lookup topics: " + AIRCRAFTS_LOOKUP_TOPIC + " and " + AirportAircraftCountStream.AIRPORTS_LOOKUP_TOPIC);
 		System.out.println("\t" + FLIGHTS_DATA_TOPIC + " -> " + FLIGHTS_PROCESSED_TOPIC + ", " + AirlineAircraftCountStream.OUTPUT_TOPIC + ", " + AirportAircraftCountStream.OUTPUT_TOPIC);
 		System.out.println();
 
@@ -85,7 +85,7 @@ public class StreamProcessor {
 		}
 	}
 
-	private static String joinWithFlightsLookup(String streamValue, String lookupValue) {
+	private static String joinWithAircraftsLookup(String streamValue, String lookupValue) {
 		if (streamValue == null || streamValue.isBlank())
 			return null;
 

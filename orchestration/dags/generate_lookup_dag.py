@@ -2,7 +2,7 @@
 DAG: Flights and airports lookup data → Kafka (Global KTable sources).
 
 Runs Spark jobs that write lookup data for enrichment of realtime flight data:
-- flights-lookup: calculated from transformed data (aircraft delay stats).
+- aircrafts-lookup: calculated from transformed data (aircraft delay stats).
 - airports-lookup: read from curated busiest_airports.parquet (written by process DAG).
 
 Both tasks run in parallel. Kafka Streams can read these as GlobalKTables.
@@ -30,16 +30,16 @@ from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOpe
 )
 
 def generate_lookups():
-	flights_lookup = SparkSubmitOperator(
-		task_id='flighs_lookup_to_kafka',
-		application='/opt/airflow/src/flights_lookup_to_kafka.py',
-		name='flights_lookup_to_kafka',
+	aircrafts_lookup = SparkSubmitOperator(
+		task_id='aircrafts_lookup_to_kafka',
+		application='/opt/airflow/src/aircrafts_lookup_to_kafka.py',
+		name='aircrafts_lookup_to_kafka',
 		conn_id='SPARK_CONNECTION',
 		conf={
 			'spark.hadoop.fs.defaultFS': 'hdfs://hdfs-namenode:9000',
 		},
 		env_vars={
-			'FLIGHTS_LOOKUP_TOPIC': 'flights-lookup',
+			'AIRCRAFTS_LOOKUP_TOPIC': 'aircrafts-lookup',
 			'KAFKA_BOOTSTRAP_SERVERS': 'kafka-broker-1:9092,kafka-broker-2:9092',
 			'AIRCRAFT_DB_PATH': '/data/metadata/Aircrafts.csv',
 		},
@@ -62,7 +62,7 @@ def generate_lookups():
 	)
 
 	# Both tasks run in parallel (no dependency between them)
-	[flights_lookup, airports_lookup]
+	[aircrafts_lookup, airports_lookup]
 
 
 generate_lookups()

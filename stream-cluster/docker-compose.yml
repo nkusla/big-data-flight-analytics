@@ -56,7 +56,7 @@ services:
     networks:
       - pipeline-network
     environment:
-      KAFKA_TOPICS: "flights-data,flights-lookup,flights-processed,airline-aircraft-counts,airport-aircraft-counts,airports-lookup"
+      KAFKA_TOPICS: "flights-data,aircrafts-lookup,flights-processed,airline-aircraft-counts,airport-aircraft-counts,airports-lookup,flights-lookup"
     restart: "no"
     entrypoint: ["/bin/sh", "-c"]
     command:
